@@ -44,19 +44,45 @@ Then restart Claude Code.
 
 </details>
 
-### MCP Server Permissions
+### Permissions for Autonomous Mode
 
-To allow the MCP tools to run without prompting, add to your settings:
+For `--auto` mode to run without prompting, add these permissions to your project's `.claude/settings.local.json`:
 
 ```json
 {
   "permissions": {
     "allow": [
-      "mcp__taskflow__*"
+      "Bash(python3*)",
+      "Bash(python*)",
+      "Bash(uv *)",
+      "Bash(cd *)",
+      "Bash(ls*)",
+      "Bash(cat *)",
+      "Bash(test *)",
+      "Bash(echo *)",
+      "Bash(grep *)",
+      "Bash(mkdir *)",
+      "Bash(rm *)",
+      "Bash(gh *)",
+      "Bash(git *)",
+      "Bash(docker *)",
+      "Bash(node *)",
+      "Bash(pnpm *)",
+      "Bash(npm *)",
+      "Bash(cargo *)",
+      "Bash(go *)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "mcp__taskflow__*",
+      "mcp__mempalace__*"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true
 }
 ```
+
+Without these, Claude Code will prompt for permission on every shell command and file operation, breaking the autonomous flow.
 
 ### Requirements
 

@@ -1,0 +1,187 @@
+import json
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+import aiosqlite
+
+from .models import Task, TaskStatus
+
+DB_PATH = Path(__file__).parent.parent / "data" / "taskflow.db"
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    parent_id TEXT,
+    verification_criteria TEXT,
+    verification_result TEXT,
+    metadata TEXT DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT,
+    FOREIGN KEY (parent_id) REFERENCES tasks(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+
+CREATE TABLE IF NOT EXISTS current_task (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    task_id TEXT,
+    FOREIGN KEY (task_id) REFERENCES tasks(id)
+);
+
+INSERT OR IGNORE INTO current_task (id, task_id) VALUES (1, NULL);
+"""
+
+
+_initialized = False
+
+
+async def get_db() -> aiosqlite.Connection:
+    global _initialized
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    db = await aiosqlite.connect(str(DB_PATH))
+    await db.execute("PRAGMA journal_mode=WAL")
+    await db.execute("PRAGMA foreign_keys=ON")
+    db.row_factory = aiosqlite.Row
+    if not _initialized:
+        await db.executescript(SCHEMA)
+        await db.commit()
+        _initialized = True
+    return db
+
+
+def _row_to_task(row: aiosqlite.Row) -> Task:
+    return Task(
+        id=row["id"],
+        name=row["name"],
+        description=row["description"],
+        status=TaskStatus(row["status"]),
+        parent_id=row["parent_id"],
+        verification_criteria=row["verification_criteria"],
+        verification_result=row["verification_result"],
+        metadata=row["metadata"],
+        created_at=row["created_at"],
+        started_at=row["started_at"],
+        completed_at=row["completed_at"],
+    )
+
+
+async def create_task(
+    name: str,
+    description: str = "",
+    parent_id: Optional[str] = None,
+    verification_criteria: Optional[str] = None,
+    metadata: Optional[dict] = None,
+) -> Task:
+    task_id = str(uuid.uuid4())[:8]
+    now = datetime.now(timezone.utc).isoformat()
+    meta_json = json.dumps(metadata or {})
+
+    db = await get_db()
+    try:
+        if parent_id:
+            cursor = await db.execute("SELECT id FROM tasks WHERE id = ?", (parent_id,))
+            if not await cursor.fetchone():
+                raise ValueError(f"Parent task '{parent_id}' not found")
+
+        await db.execute(
+            """INSERT INTO tasks (id, name, description, status, parent_id,
+               verification_criteria, metadata, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (task_id, name, description, TaskStatus.PENDING.value, parent_id,
+             verification_criteria, meta_json, now),
+        )
+        await db.commit()
+
+        cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        row = await cursor.fetchone()
+        return _row_to_task(row)
+    finally:
+        await db.close()
+
+
+async def get_task(task_id: str) -> Optional[Task]:
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        row = await cursor.fetchone()
+        return _row_to_task(row) if row else None
+    finally:
+        await db.close()
+
+
+async def get_children(task_id: str) -> list[Task]:
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM tasks WHERE parent_id = ? ORDER BY created_at",
+            (task_id,),
+        )
+        rows = await cursor.fetchall()
+        return [_row_to_task(r) for r in rows]
+    finally:
+        await db.close()
+
+
+async def get_all_tasks() -> list[Task]:
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM tasks ORDER BY created_at")
+        rows = await cursor.fetchall()
+        return [_row_to_task(r) for r in rows]
+    finally:
+        await db.close()
+
+
+async def update_task(task_id: str, **fields) -> Task:
+    allowed = {
+        "name", "description", "status", "verification_criteria",
+        "verification_result", "metadata", "started_at", "completed_at",
+    }
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not updates:
+        task = await get_task(task_id)
+        if not task:
+            raise ValueError(f"Task '{task_id}' not found")
+        return task
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values())
+    values.append(task_id)
+
+    db = await get_db()
+    try:
+        await db.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", values)
+        await db.commit()
+        cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        row = await cursor.fetchone()
+        if not row:
+            raise ValueError(f"Task '{task_id}' not found")
+        return _row_to_task(row)
+    finally:
+        await db.close()
+
+
+async def set_current_task(task_id: Optional[str]):
+    db = await get_db()
+    try:
+        await db.execute("UPDATE current_task SET task_id = ? WHERE id = 1", (task_id,))
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def get_current_task_id() -> Optional[str]:
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT task_id FROM current_task WHERE id = 1")
+        row = await cursor.fetchone()
+        return row["task_id"] if row else None
+    finally:
+        await db.close()

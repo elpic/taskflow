@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "taskflow": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["--directory", "/Users/elpic/development/workspace/personal/taskflow", "run", "run.py"]
+    }
+  }
+}

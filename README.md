@@ -4,6 +4,24 @@ Hierarchical task orchestration plugin for [Claude Code](https://claude.com/clau
 
 ## Installation
 
+Inside Claude Code, run:
+
+```
+/plugin marketplace add elpic/taskflow
+/plugin install taskflow@elpic-taskflow
+```
+
+Verify with:
+
+```bash
+claude plugins list
+```
+
+You should see `taskflow@elpic-taskflow` with status `✔ enabled`.
+
+<details>
+<summary>Manual installation (alternative)</summary>
+
 Add to your `~/.claude/settings.json`:
 
 ```json
@@ -22,13 +40,9 @@ Add to your `~/.claude/settings.json`:
 }
 ```
 
-Then restart Claude Code. Verify with:
+Then restart Claude Code.
 
-```bash
-claude plugins list
-```
-
-You should see `taskflow@elpic-taskflow` with status `✔ enabled`.
+</details>
 
 ### MCP Server Permissions
 

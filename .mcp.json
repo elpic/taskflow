@@ -3,7 +3,7 @@
     "taskflow": {
       "type": "stdio",
       "command": "uv",
-      "args": ["--directory", "/Users/elpic/development/workspace/personal/taskflow", "run", "run.py"]
+      "args": ["--directory", "${CLAUDE_PLUGIN_ROOT}", "run", "run.py"]
     }
   }
 }

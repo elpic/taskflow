@@ -40,6 +40,15 @@ CREATE TABLE IF NOT EXISTS current_task (
 );
 
 INSERT OR IGNORE INTO current_task (id, task_id) VALUES (1, NULL);
+
+CREATE TABLE IF NOT EXISTS task_dependencies (
+    task_id TEXT NOT NULL,
+    blocked_by_id TEXT NOT NULL,
+    PRIMARY KEY (task_id, blocked_by_id),
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (blocked_by_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_deps_blocked_by ON task_dependencies(blocked_by_id);
 """
 
 
@@ -75,6 +84,25 @@ async def get_db() -> aiosqlite.Connection:
                     "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key"
                     " ON tasks(idempotency_key)"
                 )
+                # Migration: add task_dependencies table if missing
+                try:
+                    await db.execute("SELECT 1 FROM task_dependencies LIMIT 0")
+                except Exception:
+                    await db.execute(
+                        """CREATE TABLE IF NOT EXISTS task_dependencies (
+                            task_id TEXT NOT NULL,
+                            blocked_by_id TEXT NOT NULL,
+                            PRIMARY KEY (task_id, blocked_by_id),
+                            FOREIGN KEY (task_id) REFERENCES tasks(id)
+                                ON DELETE CASCADE,
+                            FOREIGN KEY (blocked_by_id) REFERENCES tasks(id)
+                                ON DELETE CASCADE
+                        )"""
+                    )
+                    await db.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_deps_blocked_by"
+                        " ON task_dependencies(blocked_by_id)"
+                    )
                 await db.commit()
                 _initialized = True
     return db
@@ -343,5 +371,136 @@ async def get_current_task_id() -> str | None:
         cursor = await db.execute("SELECT task_id FROM current_task WHERE id = 1")
         row = await cursor.fetchone()
         return row["task_id"] if row else None
+    finally:
+        await db.close()
+
+
+async def add_dependencies(task_id: str, blocked_by_ids: list[str]) -> None:
+    """Add dependency edges: task_id is blocked by each id in blocked_by_ids.
+
+    Raises ValueError for self-dependency, missing tasks, non-pending task,
+    or cycle detection.
+    """
+    if not blocked_by_ids:
+        return
+
+    db = await get_db()
+    try:
+        # Validate that task_id exists and is PENDING
+        cursor = await db.execute(
+            "SELECT id, status FROM tasks WHERE id = ?", (task_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise ValueError(f"task '{task_id}' not found")
+        if row["status"] != TaskStatus.PENDING.value:
+            raise ValueError("can only add dependencies to pending tasks")
+
+        # Validate all blocked_by_ids exist; reject self-dependency
+        for bid in blocked_by_ids:
+            if bid == task_id:
+                raise ValueError("task cannot depend on itself")
+            cursor = await db.execute("SELECT id FROM tasks WHERE id = ?", (bid,))
+            if not await cursor.fetchone():
+                raise ValueError(f"blocker task '{bid}' not found")
+
+        # Cycle detection: BFS from each blocked_by_id through existing
+        # dependency edges. If we can reach task_id, adding this edge
+        # would create a cycle.
+        for bid in blocked_by_ids:
+            visited: set[str] = set()
+            queue = [bid]
+            while queue:
+                current = queue.pop(0)
+                if current in visited:
+                    continue
+                visited.add(current)
+                if current == task_id:
+                    raise ValueError("cycle detected")
+                # Follow edges: tasks that current is blocked by
+                cursor = await db.execute(
+                    "SELECT blocked_by_id FROM task_dependencies WHERE task_id = ?",
+                    (current,),
+                )
+                rows = await cursor.fetchall()
+                queue.extend(r["blocked_by_id"] for r in rows)
+
+        for bid in blocked_by_ids:
+            await db.execute(
+                "INSERT OR IGNORE INTO task_dependencies (task_id, blocked_by_id)"
+                " VALUES (?, ?)",
+                (task_id, bid),
+            )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def get_blockers(task_id: str) -> list[Task]:
+    """Return tasks that task_id is blocked by."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            """SELECT t.* FROM tasks t
+               JOIN task_dependencies d ON t.id = d.blocked_by_id
+               WHERE d.task_id = ?
+               ORDER BY t.created_at""",
+            (task_id,),
+        )
+        rows = await cursor.fetchall()
+        return [_row_to_task(r) for r in rows]
+    finally:
+        await db.close()
+
+
+async def get_dependents(task_id: str) -> list[Task]:
+    """Return tasks that are blocked by task_id."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            """SELECT t.* FROM tasks t
+               JOIN task_dependencies d ON t.id = d.task_id
+               WHERE d.blocked_by_id = ?
+               ORDER BY t.created_at""",
+            (task_id,),
+        )
+        rows = await cursor.fetchall()
+        return [_row_to_task(r) for r in rows]
+    finally:
+        await db.close()
+
+
+async def get_ready_tasks(parent_id: str | None = None) -> list[Task]:
+    """Return PENDING tasks whose blockers are all DONE.
+
+    A task is ready if it has status=pending AND no row exists in
+    task_dependencies where the blocked_by task is NOT done.
+    """
+    conditions = ["t.status = ?"]
+    params: list[str] = [TaskStatus.PENDING.value]
+
+    if parent_id is not None:
+        conditions.append("t.parent_id = ?")
+        params.append(parent_id)
+
+    where = " AND ".join(conditions)
+    query = f"""
+        SELECT t.* FROM tasks t
+        WHERE {where}
+          AND NOT EXISTS (
+              SELECT 1 FROM task_dependencies d
+              JOIN tasks b ON b.id = d.blocked_by_id
+              WHERE d.task_id = t.id
+                AND b.status != ?
+          )
+        ORDER BY t.position ASC NULLS LAST, t.created_at ASC
+    """
+    params.append(TaskStatus.DONE.value)
+
+    db = await get_db()
+    try:
+        cursor = await db.execute(query, params)
+        rows = await cursor.fetchall()
+        return [_row_to_task(r) for r in rows]
     finally:
         await db.close()

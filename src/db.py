@@ -162,6 +162,23 @@ async def get_all_tasks() -> list[Task]:
         await db.close()
 
 
+async def search_tasks(query: str) -> list[Task]:
+    pattern = f"%{query}%"
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM tasks"
+            " WHERE name LIKE ? COLLATE NOCASE"
+            " OR description LIKE ? COLLATE NOCASE"
+            " ORDER BY created_at",
+            (pattern, pattern),
+        )
+        rows = await cursor.fetchall()
+        return [_row_to_task(r) for r in rows]
+    finally:
+        await db.close()
+
+
 async def get_tasks_filtered(
     status: str | None = None,
     parent_id: str | None = None,

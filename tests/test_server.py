@@ -1,6 +1,7 @@
 from src.server import (
     task_complete,
     task_create,
+    task_current,
     task_fail,
     task_get,
     task_list,
@@ -97,3 +98,41 @@ class TestTaskGet:
         task_id = await task_create("Simple Task")
         result = await task_get(task_id)
         assert "Metadata" not in result
+
+
+class TestTaskCurrent:
+    async def test_task_current_no_active(self):
+        result = await task_current()
+        assert result == "No active task."
+
+    async def test_task_current_returns_active_task(self):
+        task_id = await task_create("Active Task")
+        await task_start(task_id)
+        result = await task_current()
+        assert "Active Task" in result
+        assert "in_progress" in result
+
+    async def test_task_current_shows_parent_breadcrumb(self):
+        root_id = await task_create("Root Project")
+        child_id = await task_create("Sub Task", parent_id=root_id)
+        await task_start(child_id)
+        result = await task_current()
+        assert "Context: Root Project" in result
+        assert "Sub Task" in result
+
+    async def test_task_current_shows_deep_breadcrumb(self):
+        root_id = await task_create("Project")
+        mid_id = await task_create("Feature", parent_id=root_id)
+        leaf_id = await task_create("Step", parent_id=mid_id)
+        await task_start(leaf_id)
+        result = await task_current()
+        assert "Context: Project > Feature" in result
+        assert "Step" in result
+
+    async def test_task_current_with_children(self):
+        parent_id = await task_create("Parent")
+        await task_create("Child", parent_id=parent_id)
+        await task_start(parent_id)
+        result = await task_current()
+        assert "Parent" in result
+        assert "Child" in result

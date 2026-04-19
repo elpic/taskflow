@@ -177,3 +177,36 @@ class TestTaskUpdate:
         assert result == "ok"
         details = await task_get(task_id)
         assert "Must pass" in details
+
+
+class TestIdempotentCreation:
+    async def test_first_creation_with_key(self):
+        task_id = await task_create("Task A", idempotency_key="key-1")
+        assert task_id  # returns an ID
+        assert "error" not in task_id
+
+    async def test_duplicate_key_returns_existing(self):
+        id1 = await task_create("Task A", idempotency_key="key-dup")
+        id2 = await task_create("Task A", idempotency_key="key-dup")
+        assert id1 == id2
+
+    async def test_different_keys_create_separate_tasks(self):
+        id1 = await task_create("Task A", idempotency_key="key-a")
+        id2 = await task_create("Task B", idempotency_key="key-b")
+        assert id1 != id2
+
+    async def test_no_key_always_creates(self):
+        id1 = await task_create("Same Name")
+        id2 = await task_create("Same Name")
+        assert id1 != id2
+
+    async def test_idempotent_with_task_type(self):
+        result1 = await task_create(
+            "Typed", task_type="simple", idempotency_key="key-typed"
+        )
+        result2 = await task_create(
+            "Typed", task_type="simple", idempotency_key="key-typed"
+        )
+        # First call returns full workflow response, second returns just the ID
+        root_id = result1.split("|")[0]
+        assert result2 == root_id

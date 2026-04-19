@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key ON tasks(idempotency_key);
 
 CREATE TABLE IF NOT EXISTS current_task (
     id INTEGER PRIMARY KEY CHECK (id = 1),

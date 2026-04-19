@@ -8,6 +8,7 @@ from src.server import (
     task_list,
     task_move,
     task_reorder,
+    task_resume,
     task_search,
     task_start,
     task_stats,
@@ -596,3 +597,91 @@ class TestTaskStats:
         assert "Children: 1/2 done, 1 failed" in result
         assert "Child 1" in result
         assert "Child 2" in result
+
+
+class TestTaskResume:
+    async def test_resume_no_active_work(self):
+        # No tasks exist at all — should report no active work
+        result = await task_resume()
+        assert result == "No active work found."
+
+    async def test_resume_finds_active_root(self):
+        # Create root, start it; create child, start child — resume() should find root
+        root_id = await task_create("Active Root")
+        await task_start(root_id)
+        child_id = await task_create("Active Child", parent_id=root_id)
+        await task_start(child_id)
+        result = await task_resume()
+        assert "Resume: Active Root" in result
+        assert "error" not in result
+
+    async def test_resume_with_explicit_root_id(self):
+        # Create root, start it — resume(root_id=id) should return a summary for it
+        root_id = await task_create("Explicit Root")
+        await task_start(root_id)
+        result = await task_resume(root_id=root_id)
+        assert "Resume: Explicit Root" in result
+        assert "error" not in result
+
+    async def test_resume_with_explicit_root_id_not_found(self):
+        # Passing a non-existent root_id should return an error
+        result = await task_resume(root_id="nonexistent")
+        assert result == "error:not found"
+
+    async def test_resume_with_non_root_id_errors(self):
+        # Passing a child task id as root_id should return an error
+        root_id = await task_create("Root")
+        child_id = await task_create("Child", parent_id=root_id)
+        result = await task_resume(root_id=child_id)
+        assert result == "error:task is not a root task"
+
+    async def test_resume_shows_current_task(self):
+        # Create root with a workflow type so it has named steps; start a child step
+        # — resume should show "Current:" with that step's name
+        result = await task_create("My Feature", task_type="simple")
+        root_id = result.split("|")[0]
+        step_ids = [entry.split(":")[0] for entry in result.split("|")[2].split(",")]
+        # Start the root then the first step
+        await task_start(root_id)
+        await task_start(step_ids[0])
+        resume_result = await task_resume(root_id=root_id)
+        assert "Current:" in resume_result
+        # The current task name should appear in the output
+        assert "(none)" not in resume_result.split("Current:")[1].split("\n")[0]
+
+    async def test_resume_shows_next_ready(self):
+        # Create root, create two chained steps, complete the first step
+        # — resume should show "Next ready:" pointing at the second step
+        root_id = await task_create("Pipeline Root")
+        await task_start(root_id)
+        step1_id = await task_create("Step One", parent_id=root_id)
+        await task_create(
+            "Step Two", parent_id=root_id, blocked_by=[step1_id]
+        )
+        # Complete step1 so step2 becomes unblocked/ready
+        await task_start(step1_id)
+        await task_complete(step1_id)
+        result = await task_resume(root_id=root_id)
+        assert "Next ready:" in result
+        assert "Step Two" in result
+
+    async def test_resume_shows_completed_context(self):
+        # Create root, create child, complete child with output
+        # — resume should include context from completed sibling steps
+        root_id = await task_create("Context Root")
+        await task_start(root_id)
+        step1_id = await task_create("Design Step", parent_id=root_id)
+        step2_id = await task_create(
+            "Implement Step", parent_id=root_id, blocked_by=[step1_id]
+        )
+        # Complete step1 with agent output
+        await task_start(step1_id)
+        await task_complete(
+            step1_id, output="Use hexagonal architecture with ports and adapters"
+        )
+        # Start step2 so it is in_progress
+        await task_start(step2_id)
+        result = await task_resume(root_id=root_id)
+        assert "Context from completed steps:" in result
+        assert "Design Step" in result
+        assert "Use hexagonal architecture" in result

@@ -62,79 +62,87 @@ CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id);
 """
 
 
-_initialized = False
+_db: aiosqlite.Connection | None = None
 _init_lock = asyncio.Lock()
 
 
 async def get_db() -> aiosqlite.Connection:
-    global _initialized
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    db = await aiosqlite.connect(str(DB_PATH))
-    await db.execute("PRAGMA journal_mode=WAL")
-    await db.execute("PRAGMA foreign_keys=ON")
-    db.row_factory = aiosqlite.Row
-    if not _initialized:
-        async with _init_lock:
-            if not _initialized:
-                await db.executescript(SCHEMA)
-                # Migrations: add columns if missing
-                for col, sql in [
-                    ("agent_output", "ALTER TABLE tasks ADD COLUMN agent_output TEXT"),
-                    ("position", "ALTER TABLE tasks ADD COLUMN position INTEGER"),
-                    (
-                        "idempotency_key",
-                        "ALTER TABLE tasks ADD COLUMN idempotency_key TEXT",
-                    ),
-                ]:
-                    try:
-                        await db.execute(f"SELECT {col} FROM tasks LIMIT 0")
-                    except Exception:
-                        await db.execute(sql)
-                await db.execute(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key"
-                    " ON tasks(idempotency_key)"
-                )
-                # Migration: add task_dependencies table if missing
-                try:
-                    await db.execute("SELECT 1 FROM task_dependencies LIMIT 0")
-                except Exception:
-                    await db.execute(
-                        """CREATE TABLE IF NOT EXISTS task_dependencies (
-                            task_id TEXT NOT NULL,
-                            blocked_by_id TEXT NOT NULL,
-                            PRIMARY KEY (task_id, blocked_by_id),
-                            FOREIGN KEY (task_id) REFERENCES tasks(id)
-                                ON DELETE CASCADE,
-                            FOREIGN KEY (blocked_by_id) REFERENCES tasks(id)
-                                ON DELETE CASCADE
-                        )"""
-                    )
-                    await db.execute(
-                        "CREATE INDEX IF NOT EXISTS idx_deps_blocked_by"
-                        " ON task_dependencies(blocked_by_id)"
-                    )
-                # Migration: add task_events table if missing
-                try:
-                    await db.execute("SELECT 1 FROM task_events LIMIT 0")
-                except Exception:
-                    await db.execute(
-                        """CREATE TABLE IF NOT EXISTS task_events (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            task_id TEXT NOT NULL,
-                            event_type TEXT NOT NULL,
-                            timestamp TEXT NOT NULL,
-                            details TEXT DEFAULT '{}',
-                            FOREIGN KEY (task_id) REFERENCES tasks(id)
-                                ON DELETE CASCADE
-                        )"""
-                    )
-                    await db.execute(
-                        "CREATE INDEX IF NOT EXISTS idx_events_task"
-                        " ON task_events(task_id)"
-                    )
-                await db.commit()
-                _initialized = True
-    return db
+    global _db
+    if _db is not None:
+        return _db
+    async with _init_lock:
+        if _db is not None:
+            return _db
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        db = await aiosqlite.connect(str(DB_PATH))
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA foreign_keys=ON")
+        db.row_factory = aiosqlite.Row
+        await db.executescript(SCHEMA)
+        # Migrations: add columns if missing
+        for col, sql in [
+            ("agent_output", "ALTER TABLE tasks ADD COLUMN agent_output TEXT"),
+            ("position", "ALTER TABLE tasks ADD COLUMN position INTEGER"),
+            (
+                "idempotency_key",
+                "ALTER TABLE tasks ADD COLUMN idempotency_key TEXT",
+            ),
+        ]:
+            try:
+                await db.execute(f"SELECT {col} FROM tasks LIMIT 0")
+            except Exception:
+                await db.execute(sql)
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key"
+            " ON tasks(idempotency_key)"
+        )
+        # Migration: add task_dependencies table if missing
+        try:
+            await db.execute("SELECT 1 FROM task_dependencies LIMIT 0")
+        except Exception:
+            await db.execute(
+                """CREATE TABLE IF NOT EXISTS task_dependencies (
+                    task_id TEXT NOT NULL,
+                    blocked_by_id TEXT NOT NULL,
+                    PRIMARY KEY (task_id, blocked_by_id),
+                    FOREIGN KEY (task_id) REFERENCES tasks(id)
+                        ON DELETE CASCADE,
+                    FOREIGN KEY (blocked_by_id) REFERENCES tasks(id)
+                        ON DELETE CASCADE
+                )"""
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_deps_blocked_by"
+                " ON task_dependencies(blocked_by_id)"
+            )
+        # Migration: add task_events table if missing
+        try:
+            await db.execute("SELECT 1 FROM task_events LIMIT 0")
+        except Exception:
+            await db.execute(
+                """CREATE TABLE IF NOT EXISTS task_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    details TEXT DEFAULT '{}',
+                    FOREIGN KEY (task_id) REFERENCES tasks(id)
+                        ON DELETE CASCADE
+                )"""
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id)"
+            )
+        await db.commit()
+        _db = db
+        return _db
+
+
+async def close_db() -> None:
+    global _db
+    if _db is not None:
+        await _db.close()
+        _db = None
 
 
 def _row_to_task(row: aiosqlite.Row) -> Task:
@@ -169,88 +177,73 @@ async def create_task(
     meta_json = json.dumps(metadata or {})
 
     db = await get_db()
-    try:
-        if parent_id:
-            cursor = await db.execute("SELECT id FROM tasks WHERE id = ?", (parent_id,))
-            if not await cursor.fetchone():
-                raise ValueError(f"Parent task '{parent_id}' not found")
+    if parent_id:
+        cursor = await db.execute("SELECT id FROM tasks WHERE id = ?", (parent_id,))
+        if not await cursor.fetchone():
+            raise ValueError(f"Parent task '{parent_id}' not found")
 
-        await db.execute(
-            """INSERT INTO tasks (id, name, description, status, parent_id,
-               verification_criteria, metadata, created_at, idempotency_key)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                task_id,
-                name,
-                description,
-                TaskStatus.PENDING.value,
-                parent_id,
-                verification_criteria,
-                meta_json,
-                now,
-                idempotency_key,
-            ),
-        )
-        await db.commit()
+    await db.execute(
+        """INSERT INTO tasks (id, name, description, status, parent_id,
+           verification_criteria, metadata, created_at, idempotency_key)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            task_id,
+            name,
+            description,
+            TaskStatus.PENDING.value,
+            parent_id,
+            verification_criteria,
+            meta_json,
+            now,
+            idempotency_key,
+        ),
+    )
+    await db.commit()
 
-        cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-        row = await cursor.fetchone()
-        if not row:
-            raise RuntimeError(f"Failed to retrieve task '{task_id}' after insert")
-        return _row_to_task(row)
-    finally:
-        await db.close()
+    cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    row = await cursor.fetchone()
+    if not row:
+        raise RuntimeError(f"Failed to retrieve task '{task_id}' after insert")
+    return _row_to_task(row)
 
 
 async def get_task(task_id: str) -> Task | None:
     db = await get_db()
-    try:
-        cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-        row = await cursor.fetchone()
-        return _row_to_task(row) if row else None
-    finally:
-        await db.close()
+    cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    row = await cursor.fetchone()
+    return _row_to_task(row) if row else None
 
 
 async def get_children(task_id: str) -> list[Task]:
     db = await get_db()
-    try:
-        cursor = await db.execute(
-            "SELECT * FROM tasks WHERE parent_id = ?"
-            " ORDER BY position ASC NULLS LAST, created_at ASC",
-            (task_id,),
-        )
-        rows = await cursor.fetchall()
-        return [_row_to_task(r) for r in rows]
-    finally:
-        await db.close()
+    cursor = await db.execute(
+        "SELECT * FROM tasks WHERE parent_id = ?"
+        " ORDER BY position ASC NULLS LAST, created_at ASC",
+        (task_id,),
+    )
+    rows = await cursor.fetchall()
+    return [_row_to_task(r) for r in rows]
 
 
 async def get_all_tasks() -> list[Task]:
     db = await get_db()
-    try:
-        cursor = await db.execute("SELECT * FROM tasks ORDER BY created_at")
-        rows = await cursor.fetchall()
-        return [_row_to_task(r) for r in rows]
-    finally:
-        await db.close()
+    cursor = await db.execute("SELECT * FROM tasks ORDER BY created_at")
+    rows = await cursor.fetchall()
+    return [_row_to_task(r) for r in rows]
 
 
 async def search_tasks(query: str) -> list[Task]:
     pattern = f"%{query}%"
     db = await get_db()
-    try:
-        cursor = await db.execute(
-            "SELECT * FROM tasks"
-            " WHERE name LIKE ? COLLATE NOCASE"
-            " OR description LIKE ? COLLATE NOCASE"
-            " ORDER BY created_at",
-            (pattern, pattern),
-        )
-        rows = await cursor.fetchall()
-        return [_row_to_task(r) for r in rows]
-    finally:
-        await db.close()
+    cursor = await db.execute(
+        "SELECT * FROM tasks"
+        " WHERE name LIKE ? COLLATE NOCASE"
+        " OR description LIKE ? COLLATE NOCASE"
+        " ORDER BY created_at",
+        (pattern, pattern),
+    )
+    rows = await cursor.fetchall()
+    return [_row_to_task(r) for r in rows]
 
 
 async def get_tasks_filtered(
@@ -273,12 +266,9 @@ async def get_tasks_filtered(
     )
 
     db = await get_db()
-    try:
-        cursor = await db.execute(query, params)
-        rows = await cursor.fetchall()
-        return [_row_to_task(r) for r in rows]
-    finally:
-        await db.close()
+    cursor = await db.execute(query, params)
+    rows = await cursor.fetchall()
+    return [_row_to_task(r) for r in rows]
 
 
 async def update_task(task_id: str, **fields) -> Task:
@@ -306,102 +296,84 @@ async def update_task(task_id: str, **fields) -> Task:
     values.append(task_id)
 
     db = await get_db()
-    try:
-        await db.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", values)
-        await db.commit()
-        cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-        row = await cursor.fetchone()
-        if not row:
-            raise ValueError(f"Task '{task_id}' not found")
-        return _row_to_task(row)
-    finally:
-        await db.close()
+    await db.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", values)
+    await db.commit()
+    cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    row = await cursor.fetchone()
+    if not row:
+        raise ValueError(f"Task '{task_id}' not found")
+    return _row_to_task(row)
 
 
 async def move_task(task_id: str, new_parent_id: str | None) -> None:
     db = await get_db()
-    try:
-        # Cycle detection: walk up from new_parent to root
-        if new_parent_id:
-            current = new_parent_id
-            while current:
-                if current == task_id:
-                    raise ValueError("cycle detected")
-                cursor = await db.execute(
-                    "SELECT parent_id FROM tasks WHERE id = ?", (current,)
-                )
-                row = await cursor.fetchone()
-                current = row["parent_id"] if row else None
+    # Cycle detection: walk up from new_parent to root
+    if new_parent_id:
+        current = new_parent_id
+        while current:
+            if current == task_id:
+                raise ValueError("cycle detected")
+            cursor = await db.execute(
+                "SELECT parent_id FROM tasks WHERE id = ?", (current,)
+            )
+            row = await cursor.fetchone()
+            current = row["parent_id"] if row else None
 
-        await db.execute(
-            "UPDATE tasks SET parent_id = ? WHERE id = ?",
-            (new_parent_id, task_id),
-        )
-        await db.commit()
-    finally:
-        await db.close()
+    await db.execute(
+        "UPDATE tasks SET parent_id = ? WHERE id = ?",
+        (new_parent_id, task_id),
+    )
+    await db.commit()
 
 
 async def find_task_by_idempotency_key(key: str) -> Task | None:
     db = await get_db()
-    try:
-        cursor = await db.execute(
-            "SELECT * FROM tasks WHERE idempotency_key = ?",
-            (key,),
-        )
-        row = await cursor.fetchone()
-        return _row_to_task(row) if row else None
-    finally:
-        await db.close()
+    cursor = await db.execute(
+        "SELECT * FROM tasks WHERE idempotency_key = ?",
+        (key,),
+    )
+    row = await cursor.fetchone()
+    return _row_to_task(row) if row else None
 
 
 async def delete_task(task_id: str) -> None:
     db = await get_db()
-    try:
-        # Recursively collect all descendant IDs
-        to_delete = [task_id]
-        queue = [task_id]
-        while queue:
-            current = queue.pop(0)
-            cursor = await db.execute(
-                "SELECT id FROM tasks WHERE parent_id = ?", (current,)
-            )
-            rows = await cursor.fetchall()
-            for row in rows:
-                to_delete.append(row["id"])
-                queue.append(row["id"])
+    # Recursively collect all descendant IDs
+    to_delete = [task_id]
+    queue = [task_id]
+    while queue:
+        current = queue.pop(0)
+        cursor = await db.execute(
+            "SELECT id FROM tasks WHERE parent_id = ?", (current,)
+        )
+        rows = await cursor.fetchall()
+        for row in rows:
+            to_delete.append(row["id"])
+            queue.append(row["id"])
 
-        # Clear current_task if it's being deleted
-        cursor = await db.execute("SELECT task_id FROM current_task WHERE id = 1")
-        row = await cursor.fetchone()
-        if row and row["task_id"] in to_delete:
-            await db.execute("UPDATE current_task SET task_id = NULL WHERE id = 1")
+    # Clear current_task if it's being deleted
+    cursor = await db.execute("SELECT task_id FROM current_task WHERE id = 1")
+    row = await cursor.fetchone()
+    if row and row["task_id"] in to_delete:
+        await db.execute("UPDATE current_task SET task_id = NULL WHERE id = 1")
 
-        # Delete in reverse order (children first) to satisfy FK constraints
-        for tid in reversed(to_delete):
-            await db.execute("DELETE FROM tasks WHERE id = ?", (tid,))
-        await db.commit()
-    finally:
-        await db.close()
+    # Delete in reverse order (children first) to satisfy FK constraints
+    for tid in reversed(to_delete):
+        await db.execute("DELETE FROM tasks WHERE id = ?", (tid,))
+    await db.commit()
 
 
 async def set_current_task(task_id: str | None):
     db = await get_db()
-    try:
-        await db.execute("UPDATE current_task SET task_id = ? WHERE id = 1", (task_id,))
-        await db.commit()
-    finally:
-        await db.close()
+    await db.execute("UPDATE current_task SET task_id = ? WHERE id = 1", (task_id,))
+    await db.commit()
 
 
 async def get_current_task_id() -> str | None:
     db = await get_db()
-    try:
-        cursor = await db.execute("SELECT task_id FROM current_task WHERE id = 1")
-        row = await cursor.fetchone()
-        return row["task_id"] if row else None
-    finally:
-        await db.close()
+    cursor = await db.execute("SELECT task_id FROM current_task WHERE id = 1")
+    row = await cursor.fetchone()
+    return row["task_id"] if row else None
 
 
 async def add_dependencies(task_id: str, blocked_by_ids: list[str]) -> None:
@@ -414,89 +386,78 @@ async def add_dependencies(task_id: str, blocked_by_ids: list[str]) -> None:
         return
 
     db = await get_db()
-    try:
-        # Validate that task_id exists and is PENDING
-        cursor = await db.execute(
-            "SELECT id, status FROM tasks WHERE id = ?", (task_id,)
-        )
-        row = await cursor.fetchone()
-        if not row:
-            raise ValueError(f"task '{task_id}' not found")
-        if row["status"] != TaskStatus.PENDING.value:
-            raise ValueError("can only add dependencies to pending tasks")
+    # Validate that task_id exists and is PENDING
+    cursor = await db.execute("SELECT id, status FROM tasks WHERE id = ?", (task_id,))
+    row = await cursor.fetchone()
+    if not row:
+        raise ValueError(f"task '{task_id}' not found")
+    if row["status"] != TaskStatus.PENDING.value:
+        raise ValueError("can only add dependencies to pending tasks")
 
-        # Validate all blocked_by_ids exist; reject self-dependency
-        for bid in blocked_by_ids:
-            if bid == task_id:
-                raise ValueError("task cannot depend on itself")
-            cursor = await db.execute("SELECT id FROM tasks WHERE id = ?", (bid,))
-            if not await cursor.fetchone():
-                raise ValueError(f"blocker task '{bid}' not found")
+    # Validate all blocked_by_ids exist; reject self-dependency
+    for bid in blocked_by_ids:
+        if bid == task_id:
+            raise ValueError("task cannot depend on itself")
+        cursor = await db.execute("SELECT id FROM tasks WHERE id = ?", (bid,))
+        if not await cursor.fetchone():
+            raise ValueError(f"blocker task '{bid}' not found")
 
-        # Cycle detection: BFS from each blocked_by_id through existing
-        # dependency edges. If we can reach task_id, adding this edge
-        # would create a cycle.
-        for bid in blocked_by_ids:
-            visited: set[str] = set()
-            queue = [bid]
-            while queue:
-                current = queue.pop(0)
-                if current in visited:
-                    continue
-                visited.add(current)
-                if current == task_id:
-                    raise ValueError("cycle detected")
-                # Follow edges: tasks that current is blocked by
-                cursor = await db.execute(
-                    "SELECT blocked_by_id FROM task_dependencies WHERE task_id = ?",
-                    (current,),
-                )
-                rows = await cursor.fetchall()
-                queue.extend(r["blocked_by_id"] for r in rows)
-
-        for bid in blocked_by_ids:
-            await db.execute(
-                "INSERT OR IGNORE INTO task_dependencies (task_id, blocked_by_id)"
-                " VALUES (?, ?)",
-                (task_id, bid),
+    # Cycle detection: BFS from each blocked_by_id through existing
+    # dependency edges. If we can reach task_id, adding this edge
+    # would create a cycle.
+    for bid in blocked_by_ids:
+        visited: set[str] = set()
+        queue = [bid]
+        while queue:
+            current = queue.pop(0)
+            if current in visited:
+                continue
+            visited.add(current)
+            if current == task_id:
+                raise ValueError("cycle detected")
+            # Follow edges: tasks that current is blocked by
+            cursor = await db.execute(
+                "SELECT blocked_by_id FROM task_dependencies WHERE task_id = ?",
+                (current,),
             )
-        await db.commit()
-    finally:
-        await db.close()
+            rows = await cursor.fetchall()
+            queue.extend(r["blocked_by_id"] for r in rows)
+
+    for bid in blocked_by_ids:
+        await db.execute(
+            "INSERT OR IGNORE INTO task_dependencies (task_id, blocked_by_id)"
+            " VALUES (?, ?)",
+            (task_id, bid),
+        )
+    await db.commit()
 
 
 async def get_blockers(task_id: str) -> list[Task]:
     """Return tasks that task_id is blocked by."""
     db = await get_db()
-    try:
-        cursor = await db.execute(
-            """SELECT t.* FROM tasks t
-               JOIN task_dependencies d ON t.id = d.blocked_by_id
-               WHERE d.task_id = ?
-               ORDER BY t.created_at""",
-            (task_id,),
-        )
-        rows = await cursor.fetchall()
-        return [_row_to_task(r) for r in rows]
-    finally:
-        await db.close()
+    cursor = await db.execute(
+        """SELECT t.* FROM tasks t
+           JOIN task_dependencies d ON t.id = d.blocked_by_id
+           WHERE d.task_id = ?
+           ORDER BY t.created_at""",
+        (task_id,),
+    )
+    rows = await cursor.fetchall()
+    return [_row_to_task(r) for r in rows]
 
 
 async def get_dependents(task_id: str) -> list[Task]:
     """Return tasks that are blocked by task_id."""
     db = await get_db()
-    try:
-        cursor = await db.execute(
-            """SELECT t.* FROM tasks t
-               JOIN task_dependencies d ON t.id = d.task_id
-               WHERE d.blocked_by_id = ?
-               ORDER BY t.created_at""",
-            (task_id,),
-        )
-        rows = await cursor.fetchall()
-        return [_row_to_task(r) for r in rows]
-    finally:
-        await db.close()
+    cursor = await db.execute(
+        """SELECT t.* FROM tasks t
+           JOIN task_dependencies d ON t.id = d.task_id
+           WHERE d.blocked_by_id = ?
+           ORDER BY t.created_at""",
+        (task_id,),
+    )
+    rows = await cursor.fetchall()
+    return [_row_to_task(r) for r in rows]
 
 
 async def find_active_root() -> "Task | None":
@@ -506,33 +467,30 @@ async def find_active_root() -> "Task | None":
     returning the most recently created root with any in-progress work.
     """
     db = await get_db()
-    try:
-        cursor = await db.execute(
-            """
-            WITH RECURSIVE subtree(id, root_id) AS (
-                SELECT id, id AS root_id FROM tasks WHERE parent_id IS NULL
-                UNION ALL
-                SELECT t.id, s.root_id
-                FROM tasks t
-                JOIN subtree s ON t.parent_id = s.id
-            )
-            SELECT t.* FROM tasks t
-            WHERE t.parent_id IS NULL
-              AND EXISTS (
-                  SELECT 1 FROM subtree s
-                  JOIN tasks d ON d.id = s.id
-                  WHERE s.root_id = t.id
-                    AND d.status = ?
-              )
-            ORDER BY t.created_at DESC
-            LIMIT 1
-            """,
-            (TaskStatus.IN_PROGRESS.value,),
+    cursor = await db.execute(
+        """
+        WITH RECURSIVE subtree(id, root_id) AS (
+            SELECT id, id AS root_id FROM tasks WHERE parent_id IS NULL
+            UNION ALL
+            SELECT t.id, s.root_id
+            FROM tasks t
+            JOIN subtree s ON t.parent_id = s.id
         )
-        row = await cursor.fetchone()
-        return _row_to_task(row) if row else None
-    finally:
-        await db.close()
+        SELECT t.* FROM tasks t
+        WHERE t.parent_id IS NULL
+          AND EXISTS (
+              SELECT 1 FROM subtree s
+              JOIN tasks d ON d.id = s.id
+              WHERE s.root_id = t.id
+                AND d.status = ?
+          )
+        ORDER BY t.created_at DESC
+        LIMIT 1
+        """,
+        (TaskStatus.IN_PROGRESS.value,),
+    )
+    row = await cursor.fetchone()
+    return _row_to_task(row) if row else None
 
 
 async def log_event(
@@ -544,15 +502,12 @@ async def log_event(
     now = datetime.now(UTC).isoformat()
     details_json = json.dumps(details or {})
     db = await get_db()
-    try:
-        await db.execute(
-            "INSERT INTO task_events (task_id, event_type, timestamp, details)"
-            " VALUES (?, ?, ?, ?)",
-            (task_id, event_type, now, details_json),
-        )
-        await db.commit()
-    finally:
-        await db.close()
+    await db.execute(
+        "INSERT INTO task_events (task_id, event_type, timestamp, details)"
+        " VALUES (?, ?, ?, ?)",
+        (task_id, event_type, now, details_json),
+    )
+    await db.commit()
 
 
 async def get_task_history(
@@ -564,50 +519,47 @@ async def get_task_history(
     Each entry is a dict with keys: event_type, timestamp, task_name, details.
     """
     db = await get_db()
-    try:
-        if recursive:
-            # Collect all descendant IDs via BFS
-            all_ids = [task_id]
-            queue = [task_id]
-            while queue:
-                current = queue.pop(0)
-                cursor = await db.execute(
-                    "SELECT id FROM tasks WHERE parent_id = ?", (current,)
-                )
-                rows = await cursor.fetchall()
-                for row in rows:
-                    all_ids.append(row["id"])
-                    queue.append(row["id"])
-            placeholders = ",".join("?" * len(all_ids))
+    if recursive:
+        # Collect all descendant IDs via BFS
+        all_ids = [task_id]
+        queue = [task_id]
+        while queue:
+            current = queue.pop(0)
             cursor = await db.execute(
-                f"""SELECT e.event_type, e.timestamp, e.details, t.name AS task_name
-                    FROM task_events e
-                    JOIN tasks t ON t.id = e.task_id
-                    WHERE e.task_id IN ({placeholders})
-                    ORDER BY e.timestamp ASC""",
-                all_ids,
+                "SELECT id FROM tasks WHERE parent_id = ?", (current,)
             )
-        else:
-            cursor = await db.execute(
-                """SELECT e.event_type, e.timestamp, e.details, t.name AS task_name
-                   FROM task_events e
-                   JOIN tasks t ON t.id = e.task_id
-                   WHERE e.task_id = ?
-                   ORDER BY e.timestamp ASC""",
-                (task_id,),
-            )
-        rows = await cursor.fetchall()
-        return [
-            {
-                "event_type": row["event_type"],
-                "timestamp": row["timestamp"],
-                "task_name": row["task_name"],
-                "details": row["details"],
-            }
-            for row in rows
-        ]
-    finally:
-        await db.close()
+            rows = await cursor.fetchall()
+            for row in rows:
+                all_ids.append(row["id"])
+                queue.append(row["id"])
+        placeholders = ",".join("?" * len(all_ids))
+        cursor = await db.execute(
+            f"""SELECT e.event_type, e.timestamp, e.details, t.name AS task_name
+                FROM task_events e
+                JOIN tasks t ON t.id = e.task_id
+                WHERE e.task_id IN ({placeholders})
+                ORDER BY e.timestamp ASC""",
+            all_ids,
+        )
+    else:
+        cursor = await db.execute(
+            """SELECT e.event_type, e.timestamp, e.details, t.name AS task_name
+               FROM task_events e
+               JOIN tasks t ON t.id = e.task_id
+               WHERE e.task_id = ?
+               ORDER BY e.timestamp ASC""",
+            (task_id,),
+        )
+    rows = await cursor.fetchall()
+    return [
+        {
+            "event_type": row["event_type"],
+            "timestamp": row["timestamp"],
+            "task_name": row["task_name"],
+            "details": row["details"],
+        }
+        for row in rows
+    ]
 
 
 async def get_all_descendants(root_id: str) -> list[Task]:
@@ -654,9 +606,6 @@ async def get_ready_tasks(parent_id: str | None = None) -> list[Task]:
     params.append(TaskStatus.DONE.value)
 
     db = await get_db()
-    try:
-        cursor = await db.execute(query, params)
-        rows = await cursor.fetchall()
-        return [_row_to_task(r) for r in rows]
-    finally:
-        await db.close()
+    cursor = await db.execute(query, params)
+    rows = await cursor.fetchall()
+    return [_row_to_task(r) for r in rows]

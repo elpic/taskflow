@@ -163,6 +163,24 @@ async def task_fail(task_id: str, reason: str) -> str:
 
 
 @mcp.tool()
+async def task_delete(task_id: str) -> str:
+    """Delete a task and all its descendants.
+
+    Args:
+        task_id: The task ID to delete
+    """
+    task = await db.get_task(task_id)
+    if not task:
+        return "error:not found"
+
+    if task.status == TaskStatus.IN_PROGRESS:
+        return "error:cannot delete in-progress task"
+
+    await db.delete_task(task_id)
+    return "ok"
+
+
+@mcp.tool()
 async def task_get(task_id: str) -> str:
     """Get a task's details and its direct children.
 

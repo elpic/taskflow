@@ -25,6 +25,7 @@ async def task_create(
     verification_criteria: str | None = None,
     task_type: str | None = None,
     idempotency_key: str | None = None,
+    blocked_by: list[str] | None = None,
 ) -> str:
     """Create a new task. If task_type is specified, auto-generates workflow subtasks.
 
@@ -38,6 +39,7 @@ async def task_create(
             Auto-creates subtasks with agent assignments.
         idempotency_key: If provided and a task with this key exists,
             return the existing task instead of creating a duplicate.
+        blocked_by: List of task IDs that must be DONE before this task can start.
     """
     try:
         if idempotency_key:
@@ -53,9 +55,17 @@ async def task_create(
             idempotency_key=idempotency_key,
         )
 
+        if blocked_by:
+            try:
+                await db.add_dependencies(task.id, blocked_by)
+            except ValueError as e:
+                await db.delete_task(task.id)
+                return f"error:{e}"
+
         if task_type:
             steps = get_workflow(task_type)
             step_info = []
+            prev_step_id: str | None = None
             for step in steps:
                 step_task = await db.create_task(
                     name=step.name,
@@ -63,8 +73,12 @@ async def task_create(
                     parent_id=task.id,
                     verification_criteria=step.verification_criteria,
                 )
+                # Auto-chain: each step is blocked by the previous step
+                if prev_step_id is not None:
+                    await db.add_dependencies(step_task.id, [prev_step_id])
                 agent_tag = f"@{step.agent}" if step.agent else "@self"
                 step_info.append(f"{step_task.id}:{agent_tag}")
+                prev_step_id = step_task.id
 
             return f"{task.id}|{task_type}|{','.join(step_info)}"
 
@@ -84,6 +98,15 @@ async def task_start(task_id: str) -> str:
         validate_transition(task.status, TaskStatus.IN_PROGRESS)
     except TransitionError as e:
         return f"error:{e}"
+
+    blockers = await db.get_blockers(task_id)
+    blocking = [b for b in blockers if b.status != TaskStatus.DONE]
+    if blocking:
+        parts = []
+        for b in blocking:
+            suffix = " (failed)" if b.status == TaskStatus.FAILED else ""
+            parts.append(f"{b.id}{suffix}")
+        return f"error:blocked by {','.join(parts)}"
 
     task = await db.update_task(task_id, **compute_start_fields())
     await db.set_current_task(task_id)
@@ -149,7 +172,7 @@ async def task_complete(task_id: str, output: str | None = None) -> str:
     if task.status == TaskStatus.VERIFYING and verify_children:
         now = datetime.now(UTC).isoformat()
         await db.update_task(task_id, status=TaskStatus.DONE.value, completed_at=now)
-        return "ok"
+        return await _append_unblocked(task_id, "ok")
 
     try:
         fields = compute_complete_fields(task, children)
@@ -158,7 +181,25 @@ async def task_complete(task_id: str, output: str | None = None) -> str:
         return f"error:{e}"
 
     await db.update_task(task_id, **fields)
+    # Only append unblocked info when the task actually reaches DONE
+    if fields.get("status") == TaskStatus.DONE.value:
+        return await _append_unblocked(task_id, "ok")
     return "ok"
+
+
+async def _append_unblocked(completed_task_id: str, base: str) -> str:
+    """Append |unblocked:<ids> to base string if dependents become unblocked."""
+    dependents = await db.get_dependents(completed_task_id)
+    newly_unblocked = []
+    for dep in dependents:
+        if dep.status != TaskStatus.PENDING:
+            continue
+        blockers = await db.get_blockers(dep.id)
+        if all(b.status == TaskStatus.DONE for b in blockers):
+            newly_unblocked.append(dep.id)
+    if newly_unblocked:
+        return f"{base}|unblocked:{','.join(newly_unblocked)}"
+    return base
 
 
 @mcp.tool()
@@ -243,6 +284,11 @@ async def task_get(task_id: str) -> str:
         parts.append(f"Metadata: {task.metadata}")
     if task.agent_output:
         parts.append(f"Output: {task.agent_output}")
+
+    blockers = await db.get_blockers(task_id)
+    if blockers:
+        blocker_strs = [f"{b.id} ({b.name}) [{b.status.value}]" for b in blockers]
+        parts.append(f"Blocked by: {', '.join(blocker_strs)}")
 
     return "\n".join(parts)
 
@@ -338,13 +384,23 @@ async def task_current() -> str:
 async def task_list(
     status: str | None = None,
     parent_id: str | None = None,
+    ready: bool = False,
 ) -> str:
     """List tasks as a rendered tree, optionally filtered.
 
     Args:
         status: Filter by status (pending, in_progress, verifying, done, failed)
         parent_id: Show only the subtree under this task
+        ready: If True, return only PENDING tasks whose blockers are all DONE
     """
+    if ready:
+        if parent_id:
+            parent = await db.get_task(parent_id)
+            if not parent:
+                return "error:not found"
+        tasks = await db.get_ready_tasks(parent_id=parent_id)
+        return render_tree(tasks)
+
     if status:
         valid = {s.value for s in TaskStatus}
         if status not in valid:

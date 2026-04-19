@@ -457,6 +457,109 @@ class TestTaskMove:
         assert result == "error:cycle detected"
 
 
+class TestTaskDependencies:
+    async def test_create_with_blocked_by(self):
+        a_id = await task_create("Task A")
+        b_id = await task_create("Task B", blocked_by=[a_id])
+        assert "error" not in b_id
+        # B exists and can be retrieved
+        result = await task_get(b_id)
+        assert "Task B" in result
+
+    async def test_start_blocked_task_fails(self):
+        a_id = await task_create("Task A")
+        b_id = await task_create("Task B", blocked_by=[a_id])
+        result = await task_start(b_id)
+        assert result.startswith("error:blocked by")
+        assert a_id in result
+
+    async def test_start_after_blocker_done(self):
+        a_id = await task_create("Task A")
+        b_id = await task_create("Task B", blocked_by=[a_id])
+        await task_complete(a_id)
+        result = await task_start(b_id)
+        assert result == "ok"
+
+    async def test_blocked_by_failed_task_shows_status(self):
+        a_id = await task_create("Task A")
+        b_id = await task_create("Task B", blocked_by=[a_id])
+        await task_start(a_id)
+        await task_fail(a_id, "broke")
+        result = await task_start(b_id)
+        assert result.startswith("error:blocked by")
+        assert "(failed)" in result
+
+    async def test_list_ready_filter(self):
+        # A and B are unblocked (no dependencies); C is blocked by A
+        a_id = await task_create("Task A")
+        b_id = await task_create("Task B")
+        await task_create("Task C", blocked_by=[a_id])
+        # Complete A so C becomes ready; start B so it's in_progress (not pending)
+        await task_complete(a_id)
+        await task_start(b_id)
+        result = await task_list(ready=True)
+        assert "Task C" in result
+        # B is in_progress, not pending — should not appear
+        assert "Task B" not in result
+        # A is done — should not appear
+        assert "Task A" not in result
+
+    async def test_complete_returns_unblocked(self):
+        a_id = await task_create("Task A")
+        b_id = await task_create("Task B", blocked_by=[a_id])
+        result = await task_complete(a_id)
+        assert "|unblocked:" in result
+        assert b_id in result
+
+    async def test_cycle_detection(self):
+        a_id = await task_create("Task A")
+        await task_create("Task B", blocked_by=[a_id])
+        # A→B→C chain; try to close the cycle: A blocked_by C
+        c_id = await task_create("Task C", blocked_by=[a_id])
+        from src import db
+
+        result_error = None
+        try:
+            await db.add_dependencies(a_id, [c_id])
+        except ValueError as e:
+            result_error = str(e)
+        assert result_error is not None
+        assert "cycle" in result_error
+
+    async def test_self_dependency_rejected(self):
+        a_id = await task_create("Task A")
+        from src import db
+
+        result_error = None
+        try:
+            await db.add_dependencies(a_id, [a_id])
+        except ValueError as e:
+            result_error = str(e)
+        assert result_error is not None
+        assert "itself" in result_error
+
+    async def test_get_shows_blocked_by(self):
+        a_id = await task_create("Task A")
+        b_id = await task_create("Task B", blocked_by=[a_id])
+        result = await task_get(b_id)
+        assert "Blocked by:" in result
+        assert a_id in result
+
+    async def test_workflow_auto_chains_steps(self):
+        result = await task_create("My Workflow", task_type="simple")
+        # result format: <root_id>|simple|<step1_id>:@agent,<step2_id>:@agent,...
+        assert "|" in result
+        parts = result.split("|")
+        assert len(parts) == 3
+        step_entries = parts[2].split(",")
+        assert len(step_entries) >= 2
+        # Extract the second step's ID
+        second_step_id = step_entries[1].split(":")[0]
+        # The second step must be blocked by the first step
+        second_step_details = await task_get(second_step_id)
+        assert "Blocked by:" in second_step_details
+
+
 class TestTaskStats:
     async def test_stats_not_found(self):
         result = await task_stats("nonexistent")

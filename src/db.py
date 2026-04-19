@@ -244,6 +244,30 @@ async def update_task(task_id: str, **fields) -> Task:
         await db.close()
 
 
+async def move_task(task_id: str, new_parent_id: str | None) -> None:
+    db = await get_db()
+    try:
+        # Cycle detection: walk up from new_parent to root
+        if new_parent_id:
+            current = new_parent_id
+            while current:
+                if current == task_id:
+                    raise ValueError("cycle detected")
+                cursor = await db.execute(
+                    "SELECT parent_id FROM tasks WHERE id = ?", (current,)
+                )
+                row = await cursor.fetchone()
+                current = row["parent_id"] if row else None
+
+        await db.execute(
+            "UPDATE tasks SET parent_id = ? WHERE id = ?",
+            (new_parent_id, task_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
 async def find_task_by_idempotency_key(key: str) -> Task | None:
     db = await get_db()
     try:

@@ -6,6 +6,7 @@ from src.server import (
     task_fail,
     task_get,
     task_list,
+    task_move,
     task_reorder,
     task_search,
     task_start,
@@ -409,3 +410,47 @@ class TestTaskSearch:
         await task_create("Child Task", parent_id=parent)
         result = await task_search("Child")
         assert "parent:" in result
+
+
+class TestTaskMove:
+    async def test_move_not_found(self):
+        result = await task_move("nonexistent")
+        assert result == "error:not found"
+
+    async def test_move_to_new_parent(self):
+        root_a = await task_create("Root A")
+        root_b = await task_create("Root B")
+        child = await task_create("Child", parent_id=root_a)
+        result = await task_move(child, new_parent_id=root_b)
+        assert result == "ok"
+        # Child should now be under Root B
+        details = await task_get(root_b)
+        assert "Child" in details
+
+    async def test_move_to_root(self):
+        parent = await task_create("Parent")
+        child = await task_create("Child", parent_id=parent)
+        result = await task_move(child, new_parent_id=None)
+        assert result == "ok"
+        # Child should be a root now
+        tree = await task_list()
+        assert "Child" in tree
+
+    async def test_move_cycle_detected(self):
+        parent = await task_create("Parent")
+        child = await task_create("Child", parent_id=parent)
+        result = await task_move(parent, new_parent_id=child)
+        assert result == "error:cycle detected"
+
+    async def test_move_invalid_parent(self):
+        task_id = await task_create("Task")
+        result = await task_move(task_id, new_parent_id="nonexistent")
+        assert result == "error:parent not found"
+
+    async def test_move_deep_cycle_detected(self):
+        a = await task_create("A")
+        b = await task_create("B", parent_id=a)
+        c = await task_create("C", parent_id=b)
+        # Try to move A under C — should detect cycle
+        result = await task_move(a, new_parent_id=c)
+        assert result == "error:cycle detected"

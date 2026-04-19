@@ -181,6 +181,31 @@ async def task_delete(task_id: str) -> str:
 
 
 @mcp.tool()
+async def task_move(task_id: str, new_parent_id: str | None = None) -> str:
+    """Move a task to a new parent (or make it a root task).
+
+    Args:
+        task_id: The task ID to move
+        new_parent_id: New parent ID, or None to make it a root task
+    """
+    task = await db.get_task(task_id)
+    if not task:
+        return "error:not found"
+
+    if new_parent_id:
+        parent = await db.get_task(new_parent_id)
+        if not parent:
+            return "error:parent not found"
+
+    try:
+        await db.move_task(task_id, new_parent_id)
+    except ValueError as e:
+        return f"error:{e}"
+
+    return "ok"
+
+
+@mcp.tool()
 async def task_get(task_id: str) -> str:
     """Get a task's details and its direct children.
 

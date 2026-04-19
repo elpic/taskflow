@@ -655,9 +655,7 @@ class TestTaskResume:
         root_id = await task_create("Pipeline Root")
         await task_start(root_id)
         step1_id = await task_create("Step One", parent_id=root_id)
-        await task_create(
-            "Step Two", parent_id=root_id, blocked_by=[step1_id]
-        )
+        await task_create("Step Two", parent_id=root_id, blocked_by=[step1_id])
         # Complete step1 so step2 becomes unblocked/ready
         await task_start(step1_id)
         await task_complete(step1_id)

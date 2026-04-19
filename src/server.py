@@ -102,21 +102,42 @@ async def task_complete(task_id: str, output: str | None = None) -> str:
     if not task:
         return "error:not found"
 
+    # Load children BEFORE any state modifications to avoid partial corruption
+    children = await db.get_children(task_id)
+    verify_children = [c for c in children if c.name.startswith("Verify: ")]
+    non_verify_children = [c for c in children if not c.name.startswith("Verify: ")]
+
+    # Validate completion preconditions before modifying state
+    if task.verification_criteria and not verify_children:
+        incomplete = [c for c in non_verify_children if c.status != TaskStatus.DONE]
+        if incomplete:
+            return "error:children not done"
+
+    if (
+        task.status == TaskStatus.VERIFYING
+        and verify_children
+        and not all(c.status == TaskStatus.DONE for c in verify_children)
+    ):
+        return "error:verification not done"
+
+    if task.status not in (
+        TaskStatus.PENDING,
+        TaskStatus.IN_PROGRESS,
+        TaskStatus.VERIFYING,
+    ):
+        try:
+            validate_transition(task.status, TaskStatus.DONE)
+        except TransitionError as e:
+            return f"error:{e}"
+
+    # All preconditions passed — now modify state
     if output:
         await db.update_task(task_id, agent_output=output)
 
     if task.status == TaskStatus.PENDING:
         task = await db.update_task(task_id, **compute_start_fields())
 
-    children = await db.get_children(task_id)
-    verify_children = [c for c in children if c.name.startswith("Verify: ")]
-    non_verify_children = [c for c in children if not c.name.startswith("Verify: ")]
-
     if task.verification_criteria and not verify_children:
-        incomplete = [c for c in non_verify_children if c.status != TaskStatus.DONE]
-        if incomplete:
-            return "error:children not done"
-
         verify_task = await db.create_task(
             name=f"Verify: {task.name}",
             description=task.verification_criteria,
@@ -126,8 +147,6 @@ async def task_complete(task_id: str, output: str | None = None) -> str:
         return f"verify:{verify_task.id}"
 
     if task.status == TaskStatus.VERIFYING and verify_children:
-        if not all(c.status == TaskStatus.DONE for c in verify_children):
-            return "error:verification not done"
         now = datetime.now(UTC).isoformat()
         await db.update_task(task_id, status=TaskStatus.DONE.value, completed_at=now)
         return "ok"

@@ -490,8 +490,8 @@ async def task_resume(root_id: str | None = None) -> str:
     siblings = await db.get_children(sibling_parent_id)
     for sibling in siblings:
         if sibling.status == TaskStatus.DONE and sibling.agent_output:
-            truncated = sibling.agent_output[:200]
-            if len(sibling.agent_output) > 200:
+            truncated = sibling.agent_output[:500]
+            if len(sibling.agent_output) > 500:
                 truncated += "…"
             context_lines.append(f"  - {sibling.name}: {truncated}")
 
@@ -569,8 +569,8 @@ async def task_next(root_id: str) -> str:
                 if sib.id == next_task.id:
                     break
                 if sib.status == TaskStatus.DONE and sib.agent_output:
-                    truncated = sib.agent_output[:200]
-                    if len(sib.agent_output) > 200:
+                    truncated = sib.agent_output[:500]
+                    if len(sib.agent_output) > 500:
                         truncated += "…"
                     context_entries.append({"step": sib.name, "output": truncated})
 
@@ -586,17 +586,18 @@ async def task_next(root_id: str) -> str:
         breadcrumb_parts.reverse()
         parent_path = " > ".join(breadcrumb_parts) if breadcrumb_parts else ""
 
-        return json.dumps(
-            {
-                "status": "next",
-                "step_id": next_task.id,
-                "step_name": next_task.name,
-                "agent": agent,
-                "description": next_task.description or "",
-                "parent_path": parent_path,
-                "context": context_entries,
-            }
-        )
+        payload: dict = {
+            "status": "next",
+            "step_id": next_task.id,
+            "step_name": next_task.name,
+            "agent": agent,
+            "description": next_task.description or "",
+            "parent_path": parent_path,
+            "context": context_entries,
+        }
+        if next_task.verification_criteria:
+            payload["verification_criteria"] = next_task.verification_criteria
+        return json.dumps(payload)
 
     # No ready task found — inspect descendants to determine why
     descendants = await db.get_all_descendants(root_id)

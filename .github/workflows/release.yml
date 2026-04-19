@@ -130,20 +130,13 @@ jobs:
         run: |
           PR=${{ steps.version-pr.outputs.pull-request-number }}
           echo "Waiting for CI on PR #$PR..."
-          for i in $(seq 1 30); do
-            sleep 10
-            STATUS=$(gh pr checks "$PR" --json bucket --jq '.[].bucket' 2>/dev/null || echo "pending")
-            if echo "$STATUS" | grep -q "fail"; then
-              echo "CI failed — skipping merge"
-              exit 0
-            fi
-            if ! echo "$STATUS" | grep -q "pending"; then
-              echo "CI passed — merging"
-              gh pr merge "$PR" --squash --delete-branch
-              exit 0
-            fi
-          done
-          echo "Timed out waiting for CI"
+          # gh pr checks --watch exits 0 when all pass, non-zero on failure
+          if gh pr checks "$PR" --watch --fail-fast 2>/dev/null; then
+            echo "CI passed — merging"
+            gh pr merge "$PR" --squash --delete-branch
+          else
+            echo "CI failed or no checks — skipping merge"
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -1,3 +1,5 @@
+import contextlib
+import json
 from datetime import UTC, datetime, timedelta
 
 from mcp.server.fastmcp import FastMCP
@@ -376,6 +378,96 @@ async def task_current() -> str:
     if breadcrumb:
         parts.append(f"Context: {' > '.join(breadcrumb)}")
     parts.append(tree)
+
+    return "\n".join(parts)
+
+
+@mcp.tool()
+async def task_resume(root_id: str | None = None) -> str:
+    """Resume a previous session by summarising active work for a root task.
+
+    Finds the in-progress root task (or the one specified), shows what is
+    currently being worked on, what is ready next, and outputs from completed
+    sibling steps so the new session has full context.
+
+    Args:
+        root_id: ID of the root task to resume. If omitted, the most recent
+            root task that has in-progress work is used automatically.
+    """
+    # Resolve the root task
+    if root_id is not None:
+        root = await db.get_task(root_id)
+        if not root:
+            return "error:not found"
+        if root.parent_id is not None:
+            return "error:task is not a root task"
+    else:
+        root = await db.find_active_root()
+        if not root:
+            return "No active work found."
+
+    # Find the deepest in-progress task (the one actually being worked on)
+    # by doing a BFS that prefers in-progress nodes
+    in_progress_task = None
+    queue: list[tuple] = [(root, [])]  # (task, breadcrumb_names)
+    in_progress_crumb: list[str] = []
+
+    while queue:
+        current, crumb = queue.pop(0)
+        if current.status == TaskStatus.IN_PROGRESS:
+            # Prefer the deepest in-progress leaf we find
+            in_progress_task = current
+            in_progress_crumb = [*crumb, current.name]
+        children = await db.get_children(current.id)
+        for child in children:
+            if child.status == TaskStatus.IN_PROGRESS:
+                queue.append((child, [*crumb, current.name]))
+
+    # Find next ready task under the root
+    ready_tasks = await db.get_ready_tasks(parent_id=root.id)
+    # If none at root level, find globally under root via all descendants
+    if not ready_tasks and in_progress_task and in_progress_task.parent_id:
+        ready_tasks = await db.get_ready_tasks(parent_id=in_progress_task.parent_id)
+
+    # Collect completed sibling steps with agent output for context
+    context_lines: list[str] = []
+    sibling_parent_id = (
+        in_progress_task.parent_id
+        if in_progress_task and in_progress_task.parent_id
+        else root.id
+    )
+    siblings = await db.get_children(sibling_parent_id)
+    for sibling in siblings:
+        if sibling.status == TaskStatus.DONE and sibling.agent_output:
+            truncated = sibling.agent_output[:200]
+            if len(sibling.agent_output) > 200:
+                truncated += "…"
+            context_lines.append(f"  - {sibling.name}: {truncated}")
+
+    # Build output
+    parts: list[str] = []
+    parts.append(f"Resume: {root.name} [{root.status.value}]")
+
+    if in_progress_task:
+        crumb_str = " > ".join(in_progress_crumb)
+        parts.append(f"Current: {in_progress_task.name} (path: {crumb_str})")
+    else:
+        parts.append("Current: (none)")
+
+    if ready_tasks:
+        next_task = ready_tasks[0]
+        meta: dict = {}
+        with contextlib.suppress(Exception):
+            meta = json.loads(next_task.metadata) if next_task.metadata else {}
+        agent = meta.get("agent", "")
+        agent_str = f" ({agent})" if agent else ""
+        parts.append(f"Next ready: {next_task.name}{agent_str}")
+    else:
+        parts.append("Next ready: (none)")
+
+    if context_lines:
+        parts.append("Context from completed steps:")
+        parts.extend(context_lines)
 
     return "\n".join(parts)
 

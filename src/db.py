@@ -470,6 +470,42 @@ async def get_dependents(task_id: str) -> list[Task]:
         await db.close()
 
 
+async def find_active_root() -> "Task | None":
+    """Find the most recent root task that has IN_PROGRESS work anywhere in its subtree.
+
+    Uses a recursive CTE to walk the full subtree of each root task,
+    returning the most recently created root with any in-progress work.
+    """
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            """
+            WITH RECURSIVE subtree(id, root_id) AS (
+                SELECT id, id AS root_id FROM tasks WHERE parent_id IS NULL
+                UNION ALL
+                SELECT t.id, s.root_id
+                FROM tasks t
+                JOIN subtree s ON t.parent_id = s.id
+            )
+            SELECT t.* FROM tasks t
+            WHERE t.parent_id IS NULL
+              AND EXISTS (
+                  SELECT 1 FROM subtree s
+                  JOIN tasks d ON d.id = s.id
+                  WHERE s.root_id = t.id
+                    AND d.status = ?
+              )
+            ORDER BY t.created_at DESC
+            LIMIT 1
+            """,
+            (TaskStatus.IN_PROGRESS.value,),
+        )
+        row = await cursor.fetchone()
+        return _row_to_task(row) if row else None
+    finally:
+        await db.close()
+
+
 async def get_ready_tasks(parent_id: str | None = None) -> list[Task]:
     """Return PENDING tasks whose blockers are all DONE.
 

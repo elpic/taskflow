@@ -10,6 +10,7 @@ from src.server import (
     task_reorder,
     task_search,
     task_start,
+    task_stats,
     task_update,
 )
 
@@ -454,3 +455,41 @@ class TestTaskMove:
         # Try to move A under C — should detect cycle
         result = await task_move(a, new_parent_id=c)
         assert result == "error:cycle detected"
+
+
+class TestTaskStats:
+    async def test_stats_not_found(self):
+        result = await task_stats("nonexistent")
+        assert result == "error:not found"
+
+    async def test_stats_pending_task(self):
+        task_id = await task_create("Pending")
+        result = await task_stats(task_id)
+        assert "Stats: Pending" in result
+        assert "pending" in result
+
+    async def test_stats_completed_task(self):
+        task_id = await task_create("Done")
+        await task_start(task_id)
+        await task_complete(task_id)
+        result = await task_stats(task_id)
+        assert "Duration:" in result
+
+    async def test_stats_in_progress_task(self):
+        task_id = await task_create("Active")
+        await task_start(task_id)
+        result = await task_stats(task_id)
+        assert "Elapsed:" in result
+        assert "in progress" in result
+
+    async def test_stats_with_children(self):
+        parent = await task_create("Parent")
+        c1 = await task_create("Child 1", parent_id=parent)
+        c2 = await task_create("Child 2", parent_id=parent)
+        await task_complete(c1)
+        await task_start(c2)
+        await task_fail(c2, "broken")
+        result = await task_stats(parent)
+        assert "Children: 1/2 done, 1 failed" in result
+        assert "Child 1" in result
+        assert "Child 2" in result

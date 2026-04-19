@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from mcp.server.fastmcp import FastMCP
 
@@ -367,6 +367,63 @@ async def task_search(query: str) -> str:
         parent_info = f" (parent: {task.parent_id})" if task.parent_id else ""
         lines.append(f"[{task.id}] {task.name} [{status}]{parent_info}")
     return "\n".join(lines)
+
+
+@mcp.tool()
+async def task_stats(task_id: str) -> str:
+    """Get timing statistics for a task and its subtree.
+
+    Args:
+        task_id: The root task ID to analyze
+    """
+    task = await db.get_task(task_id)
+    if not task:
+        return "error:not found"
+
+    children = await db.get_children(task_id)
+    lines = [f"Stats: {task.name} [{task.status.value}]"]
+
+    # Task duration
+    if task.started_at and task.completed_at:
+        start = datetime.fromisoformat(task.started_at)
+        end = datetime.fromisoformat(task.completed_at)
+        duration = end - start
+        lines.append(f"Duration: {_format_duration(duration)}")
+    elif task.started_at:
+        start = datetime.fromisoformat(task.started_at)
+        elapsed = datetime.now(UTC) - start
+        lines.append(f"Elapsed: {_format_duration(elapsed)} (in progress)")
+
+    # Child stats
+    if children:
+        total = len(children)
+        done = sum(1 for c in children if c.status == TaskStatus.DONE)
+        failed = sum(1 for c in children if c.status == TaskStatus.FAILED)
+        lines.append(f"Children: {done}/{total} done, {failed} failed")
+
+        for child in children:
+            status = child.status.value
+            dur = ""
+            if child.started_at and child.completed_at:
+                s = datetime.fromisoformat(child.started_at)
+                e = datetime.fromisoformat(child.completed_at)
+                dur = f" ({_format_duration(e - s)})"
+            lines.append(f"  - {child.name} [{status}]{dur}")
+
+    return "\n".join(lines)
+
+
+def _format_duration(td: timedelta) -> str:
+    total_seconds = int(td.total_seconds())
+    if total_seconds < 60:
+        return f"{total_seconds}s"
+    minutes = total_seconds // 60
+    seconds = total_seconds % 60
+    if minutes < 60:
+        return f"{minutes}m {seconds}s"
+    hours = minutes // 60
+    minutes = minutes % 60
+    return f"{hours}h {minutes}m"
 
 
 @mcp.tool()

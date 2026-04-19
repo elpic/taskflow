@@ -76,9 +76,11 @@ This is NOT optional. The native task list IS the progress indicator for the use
 - Ensure main is up to date first: `git pull origin main`
 
 #### 3. Implement
-- Run the full `implement` pipeline as child tasks under the ticket
-- architect → developer → QA → docs → containerize → reviewer
-- All the usual fix loops if review/QA finds issues
+- **MUST** call `task_create(name=ticket_name, task_type="implement", parent_id=ticket_id)` to create the implement workflow under the ticket
+- This generates child tasks with agent assignments: @tech-architect → @developer → @qa-engineer → @developer (docs) → @devops-engineer (containerize) → @code-reviewer
+- Work each step by delegating to its assigned agent via the Agent tool with `subagent_type`
+- If review/QA finds issues, loop back to @developer to fix, then re-test and re-review
+- Do NOT implement directly — the implement workflow ensures quality gates are followed
 
 #### 4. Commit
 - Stage all changed files

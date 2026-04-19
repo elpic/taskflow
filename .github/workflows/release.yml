@@ -99,6 +99,7 @@ jobs:
 
       - name: Sync version files via PR
         if: steps.bump.outputs.type != 'none'
+        continue-on-error: true
         run: |
           NEXT="${{ steps.next.outputs.version }}"
           BRANCH="chore/version-sync-${NEXT}"

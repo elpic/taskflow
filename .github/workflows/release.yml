@@ -129,15 +129,21 @@ jobs:
         continue-on-error: true
         run: |
           PR=${{ steps.version-pr.outputs.pull-request-number }}
-          echo "Waiting 30s for CI to start on PR #$PR..."
-          sleep 30
-          echo "Watching CI checks..."
-          if gh pr checks "$PR" --watch --fail-fast; then
-            echo "CI passed — merging"
-            gh pr merge "$PR" --squash --delete-branch
-          else
-            echo "CI checks failed — skipping merge"
-          fi
+          echo "Waiting for CI on PR #$PR..."
+          for i in $(seq 1 30); do
+            sleep 10
+            STATE=$(gh pr view "$PR" --json mergeStateStatus --jq .mergeStateStatus 2>/dev/null || echo "UNKNOWN")
+            echo "  Attempt $i: mergeState=$STATE"
+            if [ "$STATE" = "CLEAN" ]; then
+              echo "CI passed — merging PR #$PR"
+              gh pr merge "$PR" --squash --delete-branch
+              exit 0
+            elif [ "$STATE" = "UNSTABLE" ] || [ "$STATE" = "DIRTY" ]; then
+              echo "CI failed or conflicts — skipping"
+              exit 0
+            fi
+          done
+          echo "Timed out (5 min) — skipping merge"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

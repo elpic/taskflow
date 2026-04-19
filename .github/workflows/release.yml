@@ -49,6 +49,14 @@ jobs:
           MSG=$(git log -1 --pretty=%s)
           echo "msg=$MSG" >> "$GITHUB_OUTPUT"
 
+      - name: Set up uv and build wheel
+        if: steps.check.outputs.exists == 'false'
+        uses: astral-sh/setup-uv@v4
+
+      - name: Build wheel
+        if: steps.check.outputs.exists == 'false'
+        run: uv build
+
       - name: Create tag and release
         if: steps.check.outputs.exists == 'false'
         run: |
@@ -59,6 +67,7 @@ jobs:
           gh release create "$TAG" \
             --title "$TAG" \
             --notes "${{ steps.notes.outputs.msg }}" \
-            --latest
+            --latest \
+            dist/*
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

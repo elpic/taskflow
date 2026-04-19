@@ -129,13 +129,14 @@ jobs:
         continue-on-error: true
         run: |
           PR=${{ steps.version-pr.outputs.pull-request-number }}
-          echo "Waiting for CI on PR #$PR..."
-          # gh pr checks --watch exits 0 when all pass, non-zero on failure
-          if gh pr checks "$PR" --watch --fail-fast 2>/dev/null; then
+          echo "Waiting 30s for CI to start on PR #$PR..."
+          sleep 30
+          echo "Watching CI checks..."
+          if gh pr checks "$PR" --watch --fail-fast; then
             echo "CI passed — merging"
             gh pr merge "$PR" --squash --delete-branch
           else
-            echo "CI failed or no checks — skipping merge"
+            echo "CI checks failed — skipping merge"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

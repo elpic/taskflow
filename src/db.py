@@ -230,6 +230,36 @@ async def find_task_by_idempotency_key(key: str) -> Task | None:
         await db.close()
 
 
+async def delete_task(task_id: str) -> None:
+    db = await get_db()
+    try:
+        # Recursively collect all descendant IDs
+        to_delete = [task_id]
+        queue = [task_id]
+        while queue:
+            current = queue.pop(0)
+            cursor = await db.execute(
+                "SELECT id FROM tasks WHERE parent_id = ?", (current,)
+            )
+            rows = await cursor.fetchall()
+            for row in rows:
+                to_delete.append(row["id"])
+                queue.append(row["id"])
+
+        # Clear current_task if it's being deleted
+        cursor = await db.execute("SELECT task_id FROM current_task WHERE id = 1")
+        row = await cursor.fetchone()
+        if row and row["task_id"] in to_delete:
+            await db.execute("UPDATE current_task SET task_id = NULL WHERE id = 1")
+
+        # Delete in reverse order (children first) to satisfy FK constraints
+        for tid in reversed(to_delete):
+            await db.execute("DELETE FROM tasks WHERE id = ?", (tid,))
+        await db.commit()
+    finally:
+        await db.close()
+
+
 async def set_current_task(task_id: str | None):
     db = await get_db()
     try:

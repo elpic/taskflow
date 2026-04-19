@@ -2,6 +2,7 @@ from src.server import (
     task_complete,
     task_create,
     task_current,
+    task_delete,
     task_fail,
     task_get,
     task_list,
@@ -291,3 +292,47 @@ class TestAgentOutput:
         assert result == "ok"
         details = await task_get(task_id)
         assert "Quick result" in details
+
+
+class TestTaskDelete:
+    async def test_delete_not_found(self):
+        result = await task_delete("nonexistent")
+        assert result == "error:not found"
+
+    async def test_delete_leaf_task(self):
+        task_id = await task_create("Leaf")
+        result = await task_delete(task_id)
+        assert result == "ok"
+        tree = await task_list()
+        assert "Leaf" not in tree
+
+    async def test_delete_cascades_to_children(self):
+        parent_id = await task_create("Parent")
+        await task_create("Child A", parent_id=parent_id)
+        await task_create("Child B", parent_id=parent_id)
+        result = await task_delete(parent_id)
+        assert result == "ok"
+        tree = await task_list()
+        assert tree == "No tasks found."
+
+    async def test_cannot_delete_in_progress(self):
+        task_id = await task_create("Active")
+        await task_start(task_id)
+        result = await task_delete(task_id)
+        assert result == "error:cannot delete in-progress task"
+
+    async def test_delete_clears_current_task(self):
+        task_id = await task_create("Current")
+        await task_start(task_id)
+        await task_complete(task_id)
+        result = await task_delete(task_id)
+        assert result == "ok"
+        current = await task_current()
+        assert current == "No active task."
+
+    async def test_delete_failed_task(self):
+        task_id = await task_create("Failed")
+        await task_start(task_id)
+        await task_fail(task_id, "broken")
+        result = await task_delete(task_id)
+        assert result == "ok"

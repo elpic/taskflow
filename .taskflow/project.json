@@ -1,0 +1,154 @@
+{
+  "name": "taskflow",
+  "description": "Hierarchical task orchestration MCP plugin for Claude Code with agent delegation, continuous delivery, and verification",
+  "discovered_at": "2026-04-18T00:00:00Z",
+  "languages": {
+    "primary": "python",
+    "secondary": [],
+    "versions": {
+      "python": ">=3.11"
+    }
+  },
+  "package_manager": {
+    "tool": "uv",
+    "config_file": "pyproject.toml",
+    "install_command": "uv sync",
+    "add_command": "uv add",
+    "add_dev_command": "uv add --group dev",
+    "run_command": "uv run",
+    "lockfile": "uv.lock"
+  },
+  "linter": {
+    "tool": "ruff",
+    "config_file": "pyproject.toml",
+    "command": "uv run ruff check .",
+    "rules": ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"],
+    "per_file_ignores": {
+      "src/workflows.py": ["E501"]
+    }
+  },
+  "formatter": {
+    "tool": "ruff",
+    "config_file": "pyproject.toml",
+    "command": "uv run ruff format .",
+    "check_command": "uv run ruff format --check .",
+    "quote_style": "double"
+  },
+  "type_checker": {
+    "tool": "ty",
+    "config_file": "pyproject.toml",
+    "command": "uv run ty check"
+  },
+  "test_runner": {
+    "tool": "pytest",
+    "command": "uv run pytest",
+    "test_directory": "tests",
+    "coverage_command": "uv run pytest --cov=src --cov-report=term-missing",
+    "naming_convention": "test_*.py",
+    "async_mode": "auto",
+    "test_count": 103,
+    "patterns": [
+      "fixtures",
+      "monkeypatch",
+      "async-tests",
+      "parametrize",
+      "class-grouped"
+    ]
+  },
+  "architecture": {
+    "style": "pragmatic-layered",
+    "patterns": [
+      "state-machine",
+      "repository-implicit",
+      "factory",
+      "composite-tree",
+      "dataclass-models"
+    ],
+    "module_boundaries": [
+      "src/models.py — domain models (Task, TaskStatus) — leaf dependency, no imports",
+      "src/verification.py — state transition logic — pure functions, depends only on models",
+      "src/tree.py — tree rendering/presentation — pure functions, depends only on models",
+      "src/workflows.py — workflow type definitions — standalone, no internal imports",
+      "src/db.py — SQLite persistence layer — depends on models, all I/O lives here",
+      "src/server.py — MCP transport layer — orchestrates db + verification + workflows"
+    ],
+    "entry_points": [
+      "run.py"
+    ],
+    "notes": "server.py is the sole cross-layer orchestrator. Domain modules (verification, tree, workflows) have zero cross-dependencies. tree.py is used externally by MCP clients, not imported by server.py."
+  },
+  "conventions": {
+    "naming_style": "snake_case (variables/functions), PascalCase (classes), UPPER_SNAKE_CASE (constants)",
+    "docstring_style": "minimal imperative one-liners; Google-style Args: only in server.py MCP tools",
+    "line_length": 88,
+    "import_style": "relative within src (from .models import), absolute in tests (from src.db import)",
+    "error_handling": "exceptions for domain rules (TransitionError, ValueError); string-encoded errors at MCP boundary (error:reason)",
+    "logging": "none",
+    "type_annotations": "full on function signatures, modern union syntax (str | None)",
+    "data_modeling": "dataclasses for domain models, StrEnum for status, plain dicts for compute_* return values"
+  },
+  "ci_cd": {
+    "tool": "github-actions",
+    "config_files": [
+      ".github/workflows/integration.yml"
+    ],
+    "triggers": ["pull requests to main"],
+    "matrix": ["python 3.11", "python 3.12"],
+    "stages": [
+      "lint",
+      "format-check",
+      "type-check",
+      "test",
+      "build"
+    ],
+    "caching": "uv cache via astral-sh/setup-uv@v4 keyed on uv.lock",
+    "deployment_target": "claude-code-plugin"
+  },
+  "containerization": {
+    "has_docker": true,
+    "dockerfile": "Dockerfile",
+    "base_image": "python:3.12-slim",
+    "build_strategy": "multi-stage (builder + runtime)",
+    "runtime_user": "taskflow (uid 1001)",
+    "build_command": "docker build -t taskflow .",
+    "run_command": "docker run -v $(pwd)/data:/app/data taskflow",
+    "notes": "MCP stdio server — no ports exposed. Data dir at /app/data requires volume mount for persistence."
+  },
+  "api": {
+    "framework": "mcp (FastMCP)",
+    "style": "MCP tools (stdio transport)",
+    "tools": ["task_create", "task_start", "task_complete", "task_fail", "task_types"],
+    "database": "SQLite (WAL mode, foreign keys enabled)",
+    "orm": "aiosqlite (raw SQL, manual row-to-dataclass mapping)",
+    "auth": "none (inherits OS-level process security from MCP host)",
+    "external_services": [],
+    "environment_variables": "none (DB_PATH hardcoded relative to source)"
+  },
+  "project_structure": {
+    "layout": "src-layout",
+    "source_dirs": ["src"],
+    "test_dirs": ["tests"],
+    "key_files": {
+      "run.py": "MCP server entry point (stdio transport)",
+      "src/server.py": "MCP tool definitions — 5 tools",
+      "src/db.py": "SQLite persistence layer — CRUD + current task tracking",
+      "src/models.py": "Domain models — Task dataclass, TaskStatus StrEnum",
+      "src/verification.py": "State transition validation — finite state machine",
+      "src/workflows.py": "Workflow type definitions — 10 workflow types with agent assignments",
+      "src/tree.py": "Task tree rendering — icons, labels, nested display",
+      "schemas/project-profile.json": "JSON schema for this profile file",
+      "skills/languages/*.md": "Language standards for Python, TypeScript, Rust, Go"
+    }
+  },
+  "scripts": {
+    "lint": "uv run ruff check .",
+    "lint-fix": "uv run ruff check . --fix",
+    "format": "uv run ruff format .",
+    "format-check": "uv run ruff format --check .",
+    "typecheck": "uv run ty check",
+    "test": "uv run pytest",
+    "test-cov": "uv run pytest --cov=src --cov-report=term-missing",
+    "build": "uv build",
+    "run": "uv run run.py"
+  }
+}

@@ -36,6 +36,7 @@ def _make_task(
     completed_at: str | None = None,
     agent_output: str | None = None,
     position: int | None = None,
+    idempotency_key: str | None = None,
 ) -> Task:
     return Task(
         id=id,
@@ -51,6 +52,7 @@ def _make_task(
         completed_at=completed_at,
         agent_output=agent_output,
         position=position,
+        idempotency_key=idempotency_key,
     )
 
 

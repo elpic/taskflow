@@ -45,16 +45,12 @@ async def task_create(
             if existing:
                 return existing.id
 
-        metadata = None
-        if idempotency_key:
-            metadata = {"idempotency_key": idempotency_key}
-
         task = await db.create_task(
             name=name,
             description=description,
             parent_id=parent_id,
             verification_criteria=verification_criteria,
-            metadata=metadata,
+            idempotency_key=idempotency_key,
         )
 
         if task_type:

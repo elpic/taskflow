@@ -10,46 +10,15 @@ permissions:
 
 jobs:
   release:
-    name: Version and Release
+    name: Tag and Release
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine version bump from commit message
-        id: bump
-        run: |
-          MSG=$(git log -1 --pretty=%s)
-          AUTHOR=$(git log -1 --pretty=%an)
-          echo "commit_msg=$MSG" >> "$GITHUB_OUTPUT"
-
-          # Skip commits made by this workflow (version bumps)
-          if [ "$AUTHOR" = "github-actions[bot]" ]; then
-            echo "type=none" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if echo "$MSG" | grep -qiE '^feat(\(.*\))?!:|^[a-z]+(\(.*\))?!:|BREAKING CHANGE'; then
-            echo "type=major" >> "$GITHUB_OUTPUT"
-          elif echo "$MSG" | grep -qiE '^feat(\(.*\))?:'; then
-            echo "type=minor" >> "$GITHUB_OUTPUT"
-          elif echo "$MSG" | grep -qiE '^(fix|perf|refactor|build|ci|docs|style|test|chore)(\(.*\))?:'; then
-            echo "type=patch" >> "$GITHUB_OUTPUT"
-          else
-            echo "type=none" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Skip if no version bump needed
-        if: steps.bump.outputs.type == 'none'
-        run: echo "No conventional commit prefix found — skipping release."
-
-      - name: Read current version
-        if: steps.bump.outputs.type != 'none'
-        id: current
+      - name: Read version from pyproject.toml
+        id: version
         run: |
           VERSION=$(python3 -c "
           import re
@@ -58,63 +27,38 @@ jobs:
               print(m.group(1))
           ")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Compute next version
-        if: steps.bump.outputs.type != 'none'
-        id: next
+      - name: Check if tag already exists
+        id: check
         run: |
-          IFS='.' read -r MAJOR MINOR PATCH <<< "${{ steps.current.outputs.version }}"
-          BUMP="${{ steps.bump.outputs.type }}"
-
-          if [ "$BUMP" = "major" ]; then
-            MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
-          elif [ "$BUMP" = "minor" ]; then
-            MINOR=$((MINOR + 1)); PATCH=0
-          elif [ "$BUMP" = "patch" ]; then
-            PATCH=$((PATCH + 1))
+          if git ls-remote --tags origin "${{ steps.version.outputs.tag }}" | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-          NEXT="${MAJOR}.${MINOR}.${PATCH}"
-          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "Bumping ${{ steps.current.outputs.version }} → $NEXT ($BUMP)"
+      - name: Skip if tag exists
+        if: steps.check.outputs.exists == 'true'
+        run: echo "Tag ${{ steps.version.outputs.tag }} already exists — skipping."
 
-      - name: Update version in pyproject.toml
-        if: steps.bump.outputs.type != 'none'
+      - name: Get commit message for release notes
+        if: steps.check.outputs.exists == 'false'
+        id: notes
         run: |
-          sed -i "s/^version = \".*\"/version = \"${{ steps.next.outputs.version }}\"/" pyproject.toml
-
-      - name: Update version in plugin.json
-        if: steps.bump.outputs.type != 'none'
-        run: |
-          python3 -c "
-          import json
-          with open('.claude-plugin/plugin.json') as f:
-              data = json.load(f)
-          data['version'] = '${{ steps.next.outputs.version }}'
-          with open('.claude-plugin/plugin.json', 'w') as f:
-              json.dump(data, f, indent=2)
-              f.write('\n')
-          "
-
-      - name: Commit version bump
-        if: steps.bump.outputs.type != 'none'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml .claude-plugin/plugin.json
-          git commit -m "chore: bump version to ${{ steps.next.outputs.version }}"
-          git push
+          MSG=$(git log -1 --pretty=%s)
+          echo "msg=$MSG" >> "$GITHUB_OUTPUT"
 
       - name: Create tag and release
-        if: steps.bump.outputs.type != 'none'
+        if: steps.check.outputs.exists == 'false'
         run: |
-          TAG="v${{ steps.next.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
           git tag "$TAG"
           git push origin "$TAG"
 
           gh release create "$TAG" \
             --title "$TAG" \
-            --notes "${{ steps.bump.outputs.commit_msg }}" \
+            --notes "${{ steps.notes.outputs.msg }}" \
             --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

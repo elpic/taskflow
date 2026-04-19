@@ -46,6 +46,24 @@ When running `product` or `sprint` with `--auto`, taskflow enters a **continuous
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Progress Tracking (REQUIRED)
+
+The sprint loop MUST show visible progress using native tasks (TaskCreate/TaskUpdate). Without this, the user sees a wall of tool calls with no indication of what's happening.
+
+**Before the loop starts:**
+- Create one native task per backlog ticket (e.g., "Ticket 1: Add task_list MCP tool")
+- Chain them with `addBlockedBy` so they appear in priority order
+
+**During each ticket:**
+- `TaskUpdate(status=in_progress)` when starting the ticket
+- The native task list shows the user: which tickets are done, which is active, which are pending
+
+**After each ticket merges:**
+- `TaskUpdate(status=completed)` on the finished ticket
+- Previous tickets remain visible as completed — cumulative progress
+
+This is NOT optional. The native task list IS the progress indicator for the user.
+
 ### Step Details
 
 #### 1. Pick ticket

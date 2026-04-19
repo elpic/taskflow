@@ -11,3 +11,4 @@ htmlcov/
 .pytest_cache/
 dist/
 *.egg-info
+.claude/settings.local.json

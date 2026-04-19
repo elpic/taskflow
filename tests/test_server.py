@@ -1,3 +1,5 @@
+import json
+
 from src.server import (
     task_complete,
     task_context,
@@ -9,6 +11,7 @@ from src.server import (
     task_history,
     task_list,
     task_move,
+    task_next,
     task_reorder,
     task_resume,
     task_search,
@@ -811,3 +814,117 @@ class TestTaskHistory:
             assert row["cnt"] == 0
         finally:
             await db_conn.close()
+
+
+class TestTaskNext:
+    async def test_next_not_found(self):
+        result = await task_next("nonexistent")
+        assert result == "error:not found"
+
+    async def test_next_returns_ready_step(self):
+        # Create root with two chained steps; complete first step so second is ready
+        root_id = await task_create("Root Task")
+        step1_id = await task_create("Step One", parent_id=root_id)
+        step2_id = await task_create(
+            "Step Two", parent_id=root_id, blocked_by=[step1_id]
+        )
+        await task_complete(step1_id)
+
+        result = await task_next(root_id)
+        data = json.loads(result)
+
+        assert data["status"] == "next"
+        assert data["step_id"] == step2_id
+        assert data["step_name"] == "Step Two"
+
+    async def test_next_includes_agent(self):
+        # task_type="simple" creates steps with agent assignments stored in metadata
+        result = await task_create("My Feature", task_type="simple")
+        root_id = result.split("|")[0]
+
+        # The first step (Plan) has no agent — complete it so Execute step is next
+        step_ids = [entry.split(":")[0] for entry in result.split("|")[2].split(",")]
+        # step_ids[0]=Plan, step_ids[1]=Execute (developer), step_ids[2]=Verify
+        await task_complete(step_ids[0])
+
+        next_result = await task_next(root_id)
+        data = json.loads(next_result)
+
+        assert data["status"] == "next"
+        # The Execute step has agent="developer"
+        assert data["agent"] == "developer"
+
+    async def test_next_includes_context(self):
+        # Complete step1 with output; task_next for step2 includes context
+        root_id = await task_create("Pipeline Root")
+        step1_id = await task_create("Design Step", parent_id=root_id)
+        step2_id = await task_create(
+            "Implement Step", parent_id=root_id, blocked_by=[step1_id]
+        )
+        await task_start(step1_id)
+        await task_complete(step1_id, output="Use hexagonal architecture")
+
+        result = await task_next(root_id)
+        data = json.loads(result)
+
+        assert data["status"] == "next"
+        assert data["step_id"] == step2_id
+        assert len(data["context"]) == 1
+        assert data["context"][0]["step"] == "Design Step"
+        assert "hexagonal architecture" in data["context"][0]["output"]
+
+    async def test_next_all_done(self):
+        # All steps done → all_done
+        root_id = await task_create("Finished Root")
+        step_id = await task_create("Only Step", parent_id=root_id)
+        await task_complete(step_id)
+
+        result = await task_next(root_id)
+        data = json.loads(result)
+
+        assert data["status"] == "all_done"
+        assert data["root_id"] == root_id
+        assert data["completed_count"] == 1
+
+    async def test_next_waiting(self):
+        # Create root with one step; start the step — task_next should return waiting
+        root_id = await task_create("Active Root")
+        step_id = await task_create("In-Flight Step", parent_id=root_id)
+        await task_start(step_id)
+
+        result = await task_next(root_id)
+        data = json.loads(result)
+
+        assert data["status"] == "waiting"
+        assert any(item["id"] == step_id for item in data["in_progress"])
+
+    async def test_next_nested_workflow(self):
+        # Nested: root → parent_step → deep_step. Finds deepest.
+        root_id = await task_create("Root")
+        parent_step_id = await task_create("Parent Step", parent_id=root_id)
+        deep_step_id = await task_create("Deep Step", parent_id=parent_step_id)
+
+        result = await task_next(root_id)
+        data = json.loads(result)
+
+        assert data["status"] == "next"
+        # task_next finds the deepest ready task — which is the grandchild
+        assert data["step_id"] == deep_step_id
+        assert data["step_name"] == "Deep Step"
+        # parent_path should include the intermediate parent's name
+        assert "Parent Step" in data["parent_path"]
+
+    async def test_task_create_stores_agent_in_metadata(self):
+        # task_create with task_type should store "agent" key in each step's metadata
+        result = await task_create("Typed Task", task_type="simple")
+        # result format: <root_id>|simple|<step1_id>:@agent,...
+        parts = result.split("|")
+        step_entries = parts[2].split(",")
+
+        # The Execute step (index 1) has agent="developer"
+        execute_step_id = step_entries[1].split(":")[0]
+        step_details = await task_get(execute_step_id)
+
+        # Metadata section should contain the agent key
+        assert "Metadata:" in step_details
+        assert "developer" in step_details

@@ -610,6 +610,22 @@ async def get_task_history(
         await db.close()
 
 
+async def get_all_descendants(root_id: str) -> list[Task]:
+    """Return all tasks in the subtree under root_id (not including root itself).
+
+    Uses BFS via get_children to collect all descendants.
+    """
+    result: list[Task] = []
+    queue = [root_id]
+    while queue:
+        current = queue.pop(0)
+        children = await get_children(current)
+        for child in children:
+            result.append(child)
+            queue.append(child.id)
+    return result
+
+
 async def get_ready_tasks(parent_id: str | None = None) -> list[Task]:
     """Return PENDING tasks whose blockers are all DONE.
 

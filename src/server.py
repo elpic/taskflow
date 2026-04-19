@@ -78,6 +78,7 @@ async def task_create(
                     description=step.description,
                     parent_id=task.id,
                     verification_criteria=step.verification_criteria,
+                    metadata={"agent": step.agent or "self"},
                 )
                 # Auto-chain: each step is blocked by the previous step
                 if prev_step_id is not None:
@@ -491,6 +492,112 @@ async def task_resume(root_id: str | None = None) -> str:
         parts.extend(context_lines)
 
     return "\n".join(parts)
+
+
+@mcp.tool()
+async def task_next(root_id: str) -> str:
+    """Find the next actionable step under a root task.
+
+    Recursively finds the deepest ready task (pending with all blockers done)
+    under root_id. Returns JSON with full context for the agent to act on.
+
+    Args:
+        root_id: The root task ID to search under
+    """
+    root = await db.get_task(root_id)
+    if not root:
+        return "error:not found"
+
+    # Recursively find the deepest ready task
+    async def find_deepest_ready(parent_id: str):
+        ready = await db.get_ready_tasks(parent_id=parent_id)
+        if not ready:
+            return None
+        # Take the first ready task (highest priority)
+        candidate = ready[0]
+        # If it has children, recurse into it to find a deeper actionable step
+        children = await db.get_children(candidate.id)
+        if children:
+            deeper = await find_deepest_ready(candidate.id)
+            if deeper is not None:
+                return deeper
+        return candidate
+
+    next_task = await find_deepest_ready(root_id)
+
+    if next_task is not None:
+        # Extract agent from metadata
+        meta: dict = {}
+        with contextlib.suppress(Exception):
+            meta = json.loads(next_task.metadata) if next_task.metadata else {}
+        agent = meta.get("agent", "")
+
+        # Collect completed sibling outputs for context
+        context_entries: list[dict] = []
+        if next_task.parent_id:
+            siblings = await db.get_children(next_task.parent_id)
+            for sib in siblings:
+                if sib.id == next_task.id:
+                    break
+                if sib.status == TaskStatus.DONE and sib.agent_output:
+                    truncated = sib.agent_output[:200]
+                    if len(sib.agent_output) > 200:
+                        truncated += "…"
+                    context_entries.append({"step": sib.name, "output": truncated})
+
+        # Build breadcrumb from next_task up to root_id (exclusive of root name)
+        breadcrumb_parts: list[str] = []
+        walk_id = next_task.parent_id
+        while walk_id and walk_id != root_id:
+            parent = await db.get_task(walk_id)
+            if not parent:
+                break
+            breadcrumb_parts.append(parent.name)
+            walk_id = parent.parent_id
+        breadcrumb_parts.reverse()
+        parent_path = " > ".join(breadcrumb_parts) if breadcrumb_parts else ""
+
+        return json.dumps(
+            {
+                "status": "next",
+                "step_id": next_task.id,
+                "step_name": next_task.name,
+                "agent": agent,
+                "description": next_task.description or "",
+                "parent_path": parent_path,
+                "context": context_entries,
+            }
+        )
+
+    # No ready task found — inspect descendants to determine why
+    descendants = await db.get_all_descendants(root_id)
+
+    if all(d.status == TaskStatus.DONE for d in descendants):
+        return json.dumps(
+            {
+                "status": "all_done",
+                "root_id": root_id,
+                "completed_count": len(descendants),
+            }
+        )
+
+    in_progress = [
+        {"id": d.id, "name": d.name}
+        for d in descendants
+        if d.status == TaskStatus.IN_PROGRESS
+    ]
+    blocked = [
+        {"id": d.id, "name": d.name}
+        for d in descendants
+        if d.status == TaskStatus.PENDING
+    ]
+    return json.dumps(
+        {
+            "status": "waiting",
+            "in_progress": in_progress,
+            "blocked": blocked,
+        }
+    )
 
 
 @mcp.tool()

@@ -1,5 +1,6 @@
 from src.server import (
     task_complete,
+    task_context,
     task_create,
     task_current,
     task_delete,
@@ -683,3 +684,52 @@ class TestTaskResume:
         assert "Context from completed steps:" in result
         assert "Design Step" in result
         assert "Use hexagonal architecture" in result
+
+
+class TestTaskContext:
+    async def test_context_not_found(self):
+        result = await task_context("nonexistent")
+        assert result == "error:not found"
+
+    async def test_context_root_task(self):
+        root = await task_create("Root")
+        result = await task_context(root)
+        assert "No context available" in result
+
+    async def test_context_no_prior_steps(self):
+        parent = await task_create("Parent")
+        child = await task_create("First Child", parent_id=parent)
+        result = await task_context(child)
+        assert "No context from prior steps" in result
+
+    async def test_context_returns_completed_sibling_output(self):
+        parent = await task_create("Parent")
+        step1 = await task_create("Step 1", parent_id=parent)
+        step2 = await task_create("Step 2", parent_id=parent)
+        await task_start(step1)
+        await task_complete(step1, output="Architecture: hexagonal")
+        result = await task_context(step2)
+        assert "Step 1" in result
+        assert "Architecture: hexagonal" in result
+
+    async def test_context_excludes_incomplete_siblings(self):
+        parent = await task_create("Parent")
+        step1 = await task_create("Step 1", parent_id=parent)
+        step2 = await task_create("Step 2", parent_id=parent)
+        step3 = await task_create("Step 3", parent_id=parent)
+        await task_start(step1)
+        await task_complete(step1, output="Done")
+        await task_start(step2)
+        result = await task_context(step3)
+        assert "Step 1" in result
+        assert "Step 2" not in result
+
+    async def test_context_truncation(self):
+        parent = await task_create("Parent")
+        step1 = await task_create("Step 1", parent_id=parent)
+        step2 = await task_create("Step 2", parent_id=parent)
+        await task_start(step1)
+        await task_complete(step1, output="x" * 10000)
+        result = await task_context(step2, max_chars=100)
+        assert "...(truncated)" in result
+        assert len(result) < 200

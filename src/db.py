@@ -24,11 +24,13 @@ CREATE TABLE IF NOT EXISTS tasks (
     completed_at TEXT,
     agent_output TEXT,
     position INTEGER,
+    idempotency_key TEXT,
     FOREIGN KEY (parent_id) REFERENCES tasks(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key ON tasks(idempotency_key);
 
 CREATE TABLE IF NOT EXISTS current_task (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -56,11 +58,16 @@ async def get_db() -> aiosqlite.Connection:
         for col, sql in [
             ("agent_output", "ALTER TABLE tasks ADD COLUMN agent_output TEXT"),
             ("position", "ALTER TABLE tasks ADD COLUMN position INTEGER"),
+            ("idempotency_key", "ALTER TABLE tasks ADD COLUMN idempotency_key TEXT"),
         ]:
             try:
                 await db.execute(f"SELECT {col} FROM tasks LIMIT 0")
             except Exception:
                 await db.execute(sql)
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key"
+            " ON tasks(idempotency_key)"
+        )
         await db.commit()
         _initialized = True
     return db
@@ -81,6 +88,7 @@ def _row_to_task(row: aiosqlite.Row) -> Task:
         completed_at=row["completed_at"],
         agent_output=row["agent_output"],
         position=row["position"],
+        idempotency_key=row["idempotency_key"],
     )
 
 
@@ -90,6 +98,7 @@ async def create_task(
     parent_id: str | None = None,
     verification_criteria: str | None = None,
     metadata: dict | None = None,
+    idempotency_key: str | None = None,
 ) -> Task:
     task_id = str(uuid.uuid4())[:8]
     now = datetime.now(UTC).isoformat()
@@ -104,8 +113,8 @@ async def create_task(
 
         await db.execute(
             """INSERT INTO tasks (id, name, description, status, parent_id,
-               verification_criteria, metadata, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               verification_criteria, metadata, created_at, idempotency_key)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 task_id,
                 name,
@@ -115,6 +124,7 @@ async def create_task(
                 verification_criteria,
                 meta_json,
                 now,
+                idempotency_key,
             ),
         )
         await db.commit()
@@ -272,8 +282,8 @@ async def find_task_by_idempotency_key(key: str) -> Task | None:
     db = await get_db()
     try:
         cursor = await db.execute(
-            "SELECT * FROM tasks WHERE metadata LIKE ?",
-            (f'%"idempotency_key": "{key}"%',),
+            "SELECT * FROM tasks WHERE idempotency_key = ?",
+            (key,),
         )
         row = await cursor.fetchone()
         return _row_to_task(row) if row else None

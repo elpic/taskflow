@@ -167,6 +167,39 @@ async def task_get(task_id: str) -> str:
 
 
 @mcp.tool()
+async def task_current() -> str:
+    """Get the currently active task and its context."""
+    current_id = await db.get_current_task_id()
+    if not current_id:
+        return "No active task."
+
+    task = await db.get_task(current_id)
+    if not task:
+        return "No active task."
+
+    children = await db.get_children(current_id)
+    tree = render_subtree(task, children)
+
+    # Build parent breadcrumb
+    breadcrumb = []
+    parent_id = task.parent_id
+    while parent_id:
+        parent = await db.get_task(parent_id)
+        if not parent:
+            break
+        breadcrumb.append(parent.name)
+        parent_id = parent.parent_id
+    breadcrumb.reverse()
+
+    parts = []
+    if breadcrumb:
+        parts.append(f"Context: {' > '.join(breadcrumb)}")
+    parts.append(tree)
+
+    return "\n".join(parts)
+
+
+@mcp.tool()
 async def task_list() -> str:
     """List all tasks as a rendered tree."""
     tasks = await db.get_all_tasks()

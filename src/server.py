@@ -4,6 +4,7 @@ from mcp.server.fastmcp import FastMCP
 
 from . import db
 from .models import TaskStatus
+from .tree import render_tree
 from .verification import (
     TransitionError,
     compute_complete_fields,
@@ -138,6 +139,13 @@ async def task_fail(task_id: str, reason: str) -> str:
 
     await db.update_task(task_id, **compute_fail_fields(reason))
     return "ok"
+
+
+@mcp.tool()
+async def task_list() -> str:
+    """List all tasks as a rendered tree."""
+    tasks = await db.get_all_tasks()
+    return render_tree(tasks)
 
 
 @mcp.tool()

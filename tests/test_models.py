@@ -35,6 +35,7 @@ def _make_task(
     started_at: str | None = None,
     completed_at: str | None = None,
     agent_output: str | None = None,
+    position: int | None = None,
 ) -> Task:
     return Task(
         id=id,
@@ -49,6 +50,7 @@ def _make_task(
         started_at=started_at,
         completed_at=completed_at,
         agent_output=agent_output,
+        position=position,
     )
 
 

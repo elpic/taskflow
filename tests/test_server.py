@@ -6,6 +6,7 @@ from src.server import (
     task_fail,
     task_get,
     task_list,
+    task_reorder,
     task_start,
     task_update,
 )
@@ -336,3 +337,40 @@ class TestTaskDelete:
         await task_fail(task_id, "broken")
         result = await task_delete(task_id)
         assert result == "ok"
+
+
+class TestTaskReorder:
+    async def test_reorder_not_found(self):
+        result = await task_reorder("nonexistent", 0)
+        assert result == "error:not found"
+
+    async def test_reorder_sets_position(self):
+        task_id = await task_create("Task")
+        result = await task_reorder(task_id, 5)
+        assert result == "ok"
+
+    async def test_reorder_affects_sibling_order(self):
+        parent = await task_create("Parent")
+        a = await task_create("A", parent_id=parent)
+        b = await task_create("B", parent_id=parent)
+        c = await task_create("C", parent_id=parent)
+        # Reverse the order: C first, then B, then A
+        await task_reorder(c, 0)
+        await task_reorder(b, 1)
+        await task_reorder(a, 2)
+        result = await task_get(parent)
+        # C should appear before B which appears before A
+        c_pos = result.index("C")
+        b_pos = result.index("B")
+        a_pos = result.index("A")
+        assert c_pos < b_pos < a_pos
+
+    async def test_unpositioned_tasks_sort_after_positioned(self):
+        parent = await task_create("Parent")
+        await task_create("Unpositioned", parent_id=parent)
+        positioned = await task_create("Positioned", parent_id=parent)
+        await task_reorder(positioned, 0)
+        result = await task_get(parent)
+        pos_idx = result.index("Positioned")
+        unpos_idx = result.index("Unpositioned")
+        assert pos_idx < unpos_idx

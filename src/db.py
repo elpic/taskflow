@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     started_at TEXT,
     completed_at TEXT,
     agent_output TEXT,
+    position INTEGER,
     FOREIGN KEY (parent_id) REFERENCES tasks(id)
 );
 
@@ -51,11 +52,15 @@ async def get_db() -> aiosqlite.Connection:
     db.row_factory = aiosqlite.Row
     if not _initialized:
         await db.executescript(SCHEMA)
-        # Migration: add agent_output column if missing
-        try:
-            await db.execute("SELECT agent_output FROM tasks LIMIT 0")
-        except Exception:
-            await db.execute("ALTER TABLE tasks ADD COLUMN agent_output TEXT")
+        # Migrations: add columns if missing
+        for col, sql in [
+            ("agent_output", "ALTER TABLE tasks ADD COLUMN agent_output TEXT"),
+            ("position", "ALTER TABLE tasks ADD COLUMN position INTEGER"),
+        ]:
+            try:
+                await db.execute(f"SELECT {col} FROM tasks LIMIT 0")
+            except Exception:
+                await db.execute(sql)
         await db.commit()
         _initialized = True
     return db
@@ -75,6 +80,7 @@ def _row_to_task(row: aiosqlite.Row) -> Task:
         started_at=row["started_at"],
         completed_at=row["completed_at"],
         agent_output=row["agent_output"],
+        position=row["position"],
     )
 
 
@@ -136,7 +142,8 @@ async def get_children(task_id: str) -> list[Task]:
     db = await get_db()
     try:
         cursor = await db.execute(
-            "SELECT * FROM tasks WHERE parent_id = ? ORDER BY created_at",
+            "SELECT * FROM tasks WHERE parent_id = ?"
+            " ORDER BY position ASC NULLS LAST, created_at ASC",
             (task_id,),
         )
         rows = await cursor.fetchall()
@@ -170,7 +177,9 @@ async def get_tasks_filtered(
         params.append(parent_id)
 
     where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-    query = f"SELECT * FROM tasks{where} ORDER BY created_at"
+    query = (
+        f"SELECT * FROM tasks{where} ORDER BY position ASC NULLS LAST, created_at ASC"
+    )
 
     db = await get_db()
     try:
@@ -192,6 +201,7 @@ async def update_task(task_id: str, **fields) -> Task:
         "started_at",
         "completed_at",
         "agent_output",
+        "position",
     }
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:

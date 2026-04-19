@@ -24,4 +24,5 @@ class Task:
     started_at: str | None
     completed_at: str | None
     agent_output: str | None = None
+    position: int | None = None
     children: list["Task"] = field(default_factory=list)

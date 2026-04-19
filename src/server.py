@@ -246,6 +246,22 @@ async def task_update(
 
 
 @mcp.tool()
+async def task_reorder(task_id: str, position: int) -> str:
+    """Set the display/priority position of a task among its siblings.
+
+    Args:
+        task_id: The task ID to reorder
+        position: Integer position (lower = higher priority, 0-based)
+    """
+    task = await db.get_task(task_id)
+    if not task:
+        return "error:not found"
+
+    await db.update_task(task_id, position=position)
+    return "ok"
+
+
+@mcp.tool()
 async def task_current() -> str:
     """Get the currently active task and its context."""
     current_id = await db.get_current_task_id()

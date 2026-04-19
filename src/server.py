@@ -236,6 +236,35 @@ async def task_fail(task_id: str, reason: str) -> str:
 
 
 @mcp.tool()
+async def task_reset(task_id: str, recursive: bool = False) -> str:
+    """Reset a task back to pending so it can be retried.
+
+    Args:
+        task_id: The task ID to reset
+        recursive: If True, also reset all descendant tasks
+    """
+    task = await db.get_task(task_id)
+    if not task:
+        return "error:not found"
+
+    if task.status not in (TaskStatus.DONE, TaskStatus.FAILED):
+        return (
+            f"error:can only reset done or failed tasks (current: {task.status.value})"
+        )
+
+    ids_to_reset = [task_id]
+    if recursive:
+        descendants = await db.get_all_descendants(task_id)
+        ids_to_reset.extend(d.id for d in descendants)
+
+    for tid in ids_to_reset:
+        await db.reset_task(tid)
+
+    await db.log_event(task_id, "reset", {"recursive": recursive})
+    return "ok"
+
+
+@mcp.tool()
 async def task_delete(task_id: str) -> str:
     """Delete a task and all its descendants.
 

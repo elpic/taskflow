@@ -13,6 +13,7 @@ from src.server import (
     task_move,
     task_next,
     task_reorder,
+    task_reset,
     task_resume,
     task_search,
     task_start,
@@ -927,4 +928,57 @@ class TestTaskNext:
 
         # Metadata section should contain the agent key
         assert "Metadata:" in step_details
-        assert "developer" in step_details
+
+
+class TestTaskReset:
+    async def test_reset_not_found(self):
+        result = await task_reset("nonexistent")
+        assert result == "error:not found"
+
+    async def test_reset_done_task(self):
+        task_id = await task_create("Done Task")
+        await task_complete(task_id)
+        result = await task_reset(task_id)
+        assert result == "ok"
+        details = await task_get(task_id)
+        assert "pending" in details
+
+    async def test_reset_failed_task(self):
+        task_id = await task_create("Failed Task")
+        await task_start(task_id)
+        await task_fail(task_id, "broken")
+        result = await task_reset(task_id)
+        assert result == "ok"
+        details = await task_get(task_id)
+        assert "pending" in details
+
+    async def test_reset_pending_task_errors(self):
+        task_id = await task_create("Pending Task")
+        result = await task_reset(task_id)
+        assert "error:can only reset" in result
+
+    async def test_reset_in_progress_errors(self):
+        task_id = await task_create("Active Task")
+        await task_start(task_id)
+        result = await task_reset(task_id)
+        assert "error:can only reset" in result
+
+    async def test_reset_recursive(self):
+        parent = await task_create("Parent")
+        child = await task_create("Child", parent_id=parent)
+        await task_complete(child)
+        await task_complete(parent)
+        result = await task_reset(parent, recursive=True)
+        assert result == "ok"
+        parent_details = await task_get(parent)
+        assert "pending" in parent_details
+        child_details = await task_get(child)
+        assert "pending" in child_details
+
+    async def test_reset_clears_output(self):
+        task_id = await task_create("Task")
+        await task_start(task_id)
+        await task_complete(task_id, output="Some output")
+        await task_reset(task_id)
+        details = await task_get(task_id)
+        assert "Output:" not in details

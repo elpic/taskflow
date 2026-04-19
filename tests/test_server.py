@@ -6,6 +6,7 @@ from src.server import (
     task_get,
     task_list,
     task_start,
+    task_update,
 )
 
 
@@ -136,3 +137,43 @@ class TestTaskCurrent:
         result = await task_current()
         assert "Parent" in result
         assert "Child" in result
+
+
+class TestTaskUpdate:
+    async def test_task_update_not_found(self):
+        result = await task_update("nonexistent", name="New Name")
+        assert result == "error:not found"
+
+    async def test_task_update_name(self):
+        task_id = await task_create("Original")
+        result = await task_update(task_id, name="Updated")
+        assert result == "ok"
+        details = await task_get(task_id)
+        assert "Updated" in details
+
+    async def test_task_update_description(self):
+        task_id = await task_create("Task")
+        result = await task_update(task_id, description="New description")
+        assert result == "ok"
+        details = await task_get(task_id)
+        assert "New description" in details
+
+    async def test_task_update_multiple_fields(self):
+        task_id = await task_create("Task")
+        result = await task_update(task_id, name="New Name", description="New desc")
+        assert result == "ok"
+        details = await task_get(task_id)
+        assert "New Name" in details
+        assert "New desc" in details
+
+    async def test_task_update_no_fields_errors(self):
+        task_id = await task_create("Task")
+        result = await task_update(task_id)
+        assert result == "error:no fields to update"
+
+    async def test_task_update_verification_criteria(self):
+        task_id = await task_create("Task")
+        result = await task_update(task_id, verification_criteria="Must pass")
+        assert result == "ok"
+        details = await task_get(task_id)
+        assert "Must pass" in details

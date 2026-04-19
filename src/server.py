@@ -167,6 +167,44 @@ async def task_get(task_id: str) -> str:
 
 
 @mcp.tool()
+async def task_update(
+    task_id: str,
+    name: str | None = None,
+    description: str | None = None,
+    verification_criteria: str | None = None,
+    metadata: str | None = None,
+) -> str:
+    """Update a task's fields (not status — use task_start/complete/fail for that).
+
+    Args:
+        task_id: The task ID to update
+        name: New task name
+        description: New description
+        verification_criteria: New verification criteria
+        metadata: New metadata JSON string
+    """
+    task = await db.get_task(task_id)
+    if not task:
+        return "error:not found"
+
+    fields: dict[str, str] = {}
+    if name is not None:
+        fields["name"] = name
+    if description is not None:
+        fields["description"] = description
+    if verification_criteria is not None:
+        fields["verification_criteria"] = verification_criteria
+    if metadata is not None:
+        fields["metadata"] = metadata
+
+    if not fields:
+        return "error:no fields to update"
+
+    await db.update_task(task_id, **fields)
+    return "ok"
+
+
+@mcp.tool()
 async def task_current() -> str:
     """Get the currently active task and its context."""
     current_id = await db.get_current_task_id()

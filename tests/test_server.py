@@ -7,6 +7,7 @@ from src.server import (
     task_get,
     task_list,
     task_reorder,
+    task_search,
     task_start,
     task_update,
 )
@@ -374,3 +375,37 @@ class TestTaskReorder:
         pos_idx = result.index("Positioned")
         unpos_idx = result.index("Unpositioned")
         assert pos_idx < unpos_idx
+
+
+class TestTaskSearch:
+    async def test_search_empty_query(self):
+        result = await task_search("")
+        assert result == "error:empty query"
+
+    async def test_search_no_matches(self):
+        await task_create("Something Else")
+        result = await task_search("nonexistent")
+        assert result == "No matching tasks."
+
+    async def test_search_matches_name(self):
+        await task_create("Auth Feature")
+        await task_create("Unrelated")
+        result = await task_search("auth")
+        assert "Auth Feature" in result
+        assert "Unrelated" not in result
+
+    async def test_search_matches_description(self):
+        await task_create("Task", description="Implement authentication")
+        result = await task_search("authentication")
+        assert "Task" in result
+
+    async def test_search_case_insensitive(self):
+        await task_create("UPPERCASE TASK")
+        result = await task_search("uppercase")
+        assert "UPPERCASE TASK" in result
+
+    async def test_search_shows_parent_info(self):
+        parent = await task_create("Parent")
+        await task_create("Child Task", parent_id=parent)
+        result = await task_search("Child")
+        assert "parent:" in result

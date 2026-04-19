@@ -323,6 +323,28 @@ async def task_list(
 
 
 @mcp.tool()
+async def task_search(query: str) -> str:
+    """Search tasks by name or description.
+
+    Args:
+        query: Text to search for (case-insensitive)
+    """
+    if not query.strip():
+        return "error:empty query"
+
+    tasks = await db.search_tasks(query)
+    if not tasks:
+        return "No matching tasks."
+
+    lines = []
+    for task in tasks:
+        status = task.status.value
+        parent_info = f" (parent: {task.parent_id})" if task.parent_id else ""
+        lines.append(f"[{task.id}] {task.name} [{status}]{parent_info}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
 async def task_types() -> str:
     """List all available task types and their workflow steps."""
     result = []

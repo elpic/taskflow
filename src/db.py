@@ -183,6 +183,19 @@ async def update_task(task_id: str, **fields) -> Task:
         await db.close()
 
 
+async def find_task_by_idempotency_key(key: str) -> Task | None:
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM tasks WHERE metadata LIKE ?",
+            (f'%"idempotency_key": "{key}"%',),
+        )
+        row = await cursor.fetchone()
+        return _row_to_task(row) if row else None
+    finally:
+        await db.close()
+
+
 async def set_current_task(task_id: str | None):
     db = await get_db()
     try:

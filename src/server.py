@@ -24,6 +24,7 @@ async def task_create(
     parent_id: str | None = None,
     verification_criteria: str | None = None,
     task_type: str | None = None,
+    idempotency_key: str | None = None,
 ) -> str:
     """Create a new task. If task_type is specified, auto-generates workflow subtasks.
 
@@ -35,13 +36,25 @@ async def task_create(
         task_type: Workflow type (simple, implement, bugfix, refactor, research,
             secure-implement, product, sprint, discover, setup).
             Auto-creates subtasks with agent assignments.
+        idempotency_key: If provided and a task with this key exists,
+            return the existing task instead of creating a duplicate.
     """
     try:
+        if idempotency_key:
+            existing = await db.find_task_by_idempotency_key(idempotency_key)
+            if existing:
+                return existing.id
+
+        metadata = None
+        if idempotency_key:
+            metadata = {"idempotency_key": idempotency_key}
+
         task = await db.create_task(
             name=name,
             description=description,
             parent_id=parent_id,
             verification_criteria=verification_criteria,
+            metadata=metadata,
         )
 
         if task_type:

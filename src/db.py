@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 from datetime import UTC, datetime
@@ -43,6 +44,7 @@ INSERT OR IGNORE INTO current_task (id, task_id) VALUES (1, NULL);
 
 
 _initialized = False
+_init_lock = asyncio.Lock()
 
 
 async def get_db() -> aiosqlite.Connection:
@@ -53,23 +55,28 @@ async def get_db() -> aiosqlite.Connection:
     await db.execute("PRAGMA foreign_keys=ON")
     db.row_factory = aiosqlite.Row
     if not _initialized:
-        await db.executescript(SCHEMA)
-        # Migrations: add columns if missing
-        for col, sql in [
-            ("agent_output", "ALTER TABLE tasks ADD COLUMN agent_output TEXT"),
-            ("position", "ALTER TABLE tasks ADD COLUMN position INTEGER"),
-            ("idempotency_key", "ALTER TABLE tasks ADD COLUMN idempotency_key TEXT"),
-        ]:
-            try:
-                await db.execute(f"SELECT {col} FROM tasks LIMIT 0")
-            except Exception:
-                await db.execute(sql)
-        await db.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key"
-            " ON tasks(idempotency_key)"
-        )
-        await db.commit()
-        _initialized = True
+        async with _init_lock:
+            if not _initialized:
+                await db.executescript(SCHEMA)
+                # Migrations: add columns if missing
+                for col, sql in [
+                    ("agent_output", "ALTER TABLE tasks ADD COLUMN agent_output TEXT"),
+                    ("position", "ALTER TABLE tasks ADD COLUMN position INTEGER"),
+                    (
+                        "idempotency_key",
+                        "ALTER TABLE tasks ADD COLUMN idempotency_key TEXT",
+                    ),
+                ]:
+                    try:
+                        await db.execute(f"SELECT {col} FROM tasks LIMIT 0")
+                    except Exception:
+                        await db.execute(sql)
+                await db.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key"
+                    " ON tasks(idempotency_key)"
+                )
+                await db.commit()
+                _initialized = True
     return db
 
 

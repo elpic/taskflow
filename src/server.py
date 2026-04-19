@@ -251,9 +251,30 @@ async def task_current() -> str:
 
 
 @mcp.tool()
-async def task_list() -> str:
-    """List all tasks as a rendered tree."""
-    tasks = await db.get_all_tasks()
+async def task_list(
+    status: str | None = None,
+    parent_id: str | None = None,
+) -> str:
+    """List tasks as a rendered tree, optionally filtered.
+
+    Args:
+        status: Filter by status (pending, in_progress, verifying, done, failed)
+        parent_id: Show only the subtree under this task
+    """
+    if status:
+        valid = {s.value for s in TaskStatus}
+        if status not in valid:
+            return f"error:invalid status '{status}'. Valid: {', '.join(sorted(valid))}"
+
+    if status or parent_id:
+        if parent_id:
+            parent = await db.get_task(parent_id)
+            if not parent:
+                return "error:not found"
+        tasks = await db.get_tasks_filtered(status=status, parent_id=parent_id)
+    else:
+        tasks = await db.get_all_tasks()
+
     return render_tree(tasks)
 
 

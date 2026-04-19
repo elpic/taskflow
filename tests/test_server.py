@@ -6,6 +6,7 @@ from src.server import (
     task_delete,
     task_fail,
     task_get,
+    task_history,
     task_list,
     task_move,
     task_reorder,
@@ -733,3 +734,80 @@ class TestTaskContext:
         result = await task_context(step2, max_chars=100)
         assert "...(truncated)" in result
         assert len(result) < 200
+
+
+class TestTaskHistory:
+    async def test_history_not_found(self):
+        result = await task_history("nonexistent")
+        assert result == "error:not found"
+
+    async def test_history_no_events(self):
+        # Manually create a task and do NOT log any events so the events table
+        # is empty for that task_id (bypasses server.py which always logs "created").
+        from src import db
+
+        task = await db.create_task("Bare Task")
+        result = await task_history(task.id)
+        assert result == "No events found."
+
+    async def test_history_after_create(self):
+        task_id = await task_create("My Task")
+        result = await task_history(task_id)
+        assert "created" in result
+        assert "My Task" in result
+
+    async def test_history_after_lifecycle(self):
+        task_id = await task_create("Lifecycle Task")
+        await task_start(task_id)
+        await task_complete(task_id)
+        result = await task_history(task_id)
+        lines = result.strip().splitlines()
+        event_types = [line.split("] ")[1].split(":")[0] for line in lines]
+        assert event_types == ["created", "started", "completed"]
+
+    async def test_history_after_fail(self):
+        task_id = await task_create("Failing Task")
+        await task_start(task_id)
+        await task_fail(task_id, "something broke")
+        result = await task_history(task_id)
+        assert "failed" in result
+        assert "something broke" in result
+
+    async def test_history_recursive(self):
+        parent_id = await task_create("Parent Task")
+        child_id = await task_create("Child Task", parent_id=parent_id)
+        await task_start(child_id)
+        await task_complete(child_id)
+        result = await task_history(parent_id, recursive=True)
+        assert "Parent Task" in result
+        assert "Child Task" in result
+        # Parent has "created"; child has "created", "started", "completed"
+        assert result.count("created") >= 2
+        assert "completed" in result
+
+    async def test_history_after_delete(self):
+        # Create a task so events exist, then delete it.
+        # The CASCADE should remove events for the deleted task from task_events.
+        from src import db
+
+        task_id = await task_create("Soon Deleted")
+        # Confirm the event exists before deletion
+        events_before = await db.get_task_history(task_id)
+        assert len(events_before) == 1
+        assert events_before[0]["event_type"] == "created"
+
+        await task_delete(task_id)
+
+        # After deletion the task row is gone — verify via db directly
+        # that no stale events remain (CASCADE should have cleaned them up).
+        db_conn = await db.get_db()
+        try:
+            cursor = await db_conn.execute(
+                "SELECT COUNT(*) as cnt FROM task_events WHERE task_id = ?",
+                (task_id,),
+            )
+            row = await cursor.fetchone()
+            assert row is not None
+            assert row["cnt"] == 0
+        finally:
+            await db_conn.close()

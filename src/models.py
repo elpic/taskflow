@@ -1,9 +1,8 @@
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     VERIFYING = "verifying"
@@ -17,11 +16,11 @@ class Task:
     name: str
     description: str
     status: TaskStatus
-    parent_id: Optional[str]
-    verification_criteria: Optional[str]
-    verification_result: Optional[str]
+    parent_id: str | None
+    verification_criteria: str | None
+    verification_result: str | None
     metadata: str
     created_at: str
-    started_at: Optional[str]
-    completed_at: Optional[str]
+    started_at: str | None
+    completed_at: str | None
     children: list["Task"] = field(default_factory=list)

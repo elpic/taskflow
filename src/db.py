@@ -1,8 +1,7 @@
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import aiosqlite
 
@@ -75,12 +74,12 @@ def _row_to_task(row: aiosqlite.Row) -> Task:
 async def create_task(
     name: str,
     description: str = "",
-    parent_id: Optional[str] = None,
-    verification_criteria: Optional[str] = None,
-    metadata: Optional[dict] = None,
+    parent_id: str | None = None,
+    verification_criteria: str | None = None,
+    metadata: dict | None = None,
 ) -> Task:
     task_id = str(uuid.uuid4())[:8]
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     meta_json = json.dumps(metadata or {})
 
     db = await get_db()
@@ -94,19 +93,29 @@ async def create_task(
             """INSERT INTO tasks (id, name, description, status, parent_id,
                verification_criteria, metadata, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (task_id, name, description, TaskStatus.PENDING.value, parent_id,
-             verification_criteria, meta_json, now),
+            (
+                task_id,
+                name,
+                description,
+                TaskStatus.PENDING.value,
+                parent_id,
+                verification_criteria,
+                meta_json,
+                now,
+            ),
         )
         await db.commit()
 
         cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
         row = await cursor.fetchone()
+        if not row:
+            raise RuntimeError(f"Failed to retrieve task '{task_id}' after insert")
         return _row_to_task(row)
     finally:
         await db.close()
 
 
-async def get_task(task_id: str) -> Optional[Task]:
+async def get_task(task_id: str) -> Task | None:
     db = await get_db()
     try:
         cursor = await db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
@@ -141,8 +150,14 @@ async def get_all_tasks() -> list[Task]:
 
 async def update_task(task_id: str, **fields) -> Task:
     allowed = {
-        "name", "description", "status", "verification_criteria",
-        "verification_result", "metadata", "started_at", "completed_at",
+        "name",
+        "description",
+        "status",
+        "verification_criteria",
+        "verification_result",
+        "metadata",
+        "started_at",
+        "completed_at",
     }
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:
@@ -168,7 +183,7 @@ async def update_task(task_id: str, **fields) -> Task:
         await db.close()
 
 
-async def set_current_task(task_id: Optional[str]):
+async def set_current_task(task_id: str | None):
     db = await get_db()
     try:
         await db.execute("UPDATE current_task SET task_id = ? WHERE id = 1", (task_id,))
@@ -177,7 +192,7 @@ async def set_current_task(task_id: Optional[str]):
         await db.close()
 
 
-async def get_current_task_id() -> Optional[str]:
+async def get_current_task_id() -> str | None:
     db = await get_db()
     try:
         cursor = await db.execute("SELECT task_id FROM current_task WHERE id = 1")

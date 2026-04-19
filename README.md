@@ -89,6 +89,41 @@ Without these, Claude Code will prompt for permission on every shell command and
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
 
+## Development
+
+### Prerequisites
+
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) package manager
+
+### Setup
+
+```bash
+uv sync
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `uv run ruff check .` | Lint |
+| `uv run ruff format .` | Format |
+| `uv run ty check` | Type check |
+| `uv run pytest` | Run tests |
+| `uv run pytest --cov=src` | Run tests with coverage |
+| `uv build` | Build wheel |
+
+### Docker
+
+```bash
+docker build -t taskflow .
+docker run -v $(pwd)/data:/app/data taskflow
+```
+
+### Integration
+
+GitHub Actions runs lint, format check, type check, tests, and build on pull requests targeting `main`.
+
 ## What it does
 
 Taskflow turns Claude Code into a full development team. When you give it a task, it:

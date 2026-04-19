@@ -1,0 +1,37 @@
+# Virtual environment — rebuilt inside the container by uv
+.venv/
+
+# Version control
+.git/
+.gitignore
+
+# Python byte-code and caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Test artifacts
+tests/
+.coverage
+htmlcov/
+
+# CI/CD and tooling configuration
+.github/
+.claude-plugin/
+
+# Local database files — mount a volume at /app/data instead
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Build outputs
+dist/
+*.egg-info/
+build/
+
+# Editor / OS artefacts
+.DS_Store
+*.swp

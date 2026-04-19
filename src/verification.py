@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .models import Task, TaskStatus
 
@@ -19,16 +19,17 @@ VALID_TRANSITIONS = {
 
 def validate_transition(current: TaskStatus, target: TaskStatus) -> None:
     if target not in VALID_TRANSITIONS.get(current, set()):
+        valid = ", ".join(s.value for s in VALID_TRANSITIONS[current]) or "none"
         raise TransitionError(
             f"Cannot transition from '{current.value}' to '{target.value}'. "
-            f"Valid transitions: {', '.join(s.value for s in VALID_TRANSITIONS[current]) or 'none'}"
+            f"Valid transitions: {valid}"
         )
 
 
 def compute_start_fields() -> dict:
     return {
         "status": TaskStatus.IN_PROGRESS.value,
-        "started_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -37,7 +38,8 @@ def compute_complete_fields(task: Task, children: list[Task]) -> dict:
     if incomplete:
         names = ", ".join(f"'{c.name}' ({c.status.value})" for c in incomplete)
         raise TransitionError(
-            f"Cannot complete '{task.name}': {len(incomplete)} child task(s) not done: {names}"
+            f"Cannot complete '{task.name}': "
+            f"{len(incomplete)} child task(s) not done: {names}"
         )
 
     if task.verification_criteria:
@@ -45,7 +47,7 @@ def compute_complete_fields(task: Task, children: list[Task]) -> dict:
 
     return {
         "status": TaskStatus.DONE.value,
-        "completed_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -56,7 +58,7 @@ def compute_verify_fields(passed: bool, details: str = "") -> dict:
         return {
             "status": TaskStatus.DONE.value,
             "verification_result": result,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "completed_at": datetime.now(UTC).isoformat(),
         }
 
     return {

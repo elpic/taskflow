@@ -4,7 +4,7 @@ from mcp.server.fastmcp import FastMCP
 
 from . import db
 from .models import TaskStatus
-from .tree import render_tree
+from .tree import render_subtree, render_tree
 from .verification import (
     TransitionError,
     compute_complete_fields,
@@ -139,6 +139,31 @@ async def task_fail(task_id: str, reason: str) -> str:
 
     await db.update_task(task_id, **compute_fail_fields(reason))
     return "ok"
+
+
+@mcp.tool()
+async def task_get(task_id: str) -> str:
+    """Get a task's details and its direct children.
+
+    Args:
+        task_id: The task ID to retrieve
+    """
+    task = await db.get_task(task_id)
+    if not task:
+        return "error:not found"
+
+    children = await db.get_children(task_id)
+    tree = render_subtree(task, children)
+
+    parts = [tree]
+    if task.description:
+        parts.append(f"\nDescription: {task.description}")
+    if task.verification_criteria:
+        parts.append(f"Criteria: {task.verification_criteria}")
+    if task.metadata and task.metadata != "{}":
+        parts.append(f"Metadata: {task.metadata}")
+
+    return "\n".join(parts)
 
 
 @mcp.tool()

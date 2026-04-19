@@ -1,4 +1,11 @@
-from src.server import task_complete, task_create, task_fail, task_list, task_start
+from src.server import (
+    task_complete,
+    task_create,
+    task_fail,
+    task_get,
+    task_list,
+    task_start,
+)
 
 
 class TestTaskList:
@@ -50,3 +57,43 @@ class TestTaskList:
         await task_complete(task_id)
         result = await task_list()
         assert "done" in result
+
+
+class TestTaskGet:
+    async def test_task_get_not_found(self):
+        result = await task_get("nonexistent")
+        assert result == "error:not found"
+
+    async def test_task_get_returns_task_details(self):
+        task_id = await task_create("My Task", description="A test task")
+        result = await task_get(task_id)
+        assert "My Task" in result
+        assert "pending" in result
+        assert "Description: A test task" in result
+
+    async def test_task_get_with_children(self):
+        parent_id = await task_create("Parent")
+        await task_create("Child A", parent_id=parent_id)
+        await task_create("Child B", parent_id=parent_id)
+        result = await task_get(parent_id)
+        assert "Parent" in result
+        assert "Child A" in result
+        assert "Child B" in result
+
+    async def test_task_get_without_children(self):
+        task_id = await task_create("Leaf Task")
+        result = await task_get(task_id)
+        assert "Leaf Task" in result
+        assert "└──" not in result
+
+    async def test_task_get_shows_verification_criteria(self):
+        task_id = await task_create(
+            "Verified Task", verification_criteria="All tests pass"
+        )
+        result = await task_get(task_id)
+        assert "Criteria: All tests pass" in result
+
+    async def test_task_get_hides_empty_metadata(self):
+        task_id = await task_create("Simple Task")
+        result = await task_get(task_id)
+        assert "Metadata" not in result

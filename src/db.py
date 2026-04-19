@@ -148,6 +148,32 @@ async def get_all_tasks() -> list[Task]:
         await db.close()
 
 
+async def get_tasks_filtered(
+    status: str | None = None,
+    parent_id: str | None = None,
+) -> list[Task]:
+    conditions = []
+    params: list[str] = []
+
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+    if parent_id:
+        conditions.append("parent_id = ?")
+        params.append(parent_id)
+
+    where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+    query = f"SELECT * FROM tasks{where} ORDER BY created_at"
+
+    db = await get_db()
+    try:
+        cursor = await db.execute(query, params)
+        rows = await cursor.fetchall()
+        return [_row_to_task(r) for r in rows]
+    finally:
+        await db.close()
+
+
 async def update_task(task_id: str, **fields) -> Task:
     allowed = {
         "name",

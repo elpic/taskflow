@@ -61,6 +61,56 @@ class TestTaskList:
         assert "done" in result
 
 
+class TestTaskListFiltering:
+    async def test_filter_by_status(self):
+        await task_create("Pending A")
+        t2 = await task_create("Started B")
+        await task_start(t2)
+        result = await task_list(status="pending")
+        assert "Pending A" in result
+        assert "Started B" not in result
+
+    async def test_filter_by_status_in_progress(self):
+        await task_create("Pending")
+        t2 = await task_create("Active")
+        await task_start(t2)
+        result = await task_list(status="in_progress")
+        assert "Active" in result
+        assert "Pending" not in result
+
+    async def test_filter_by_parent_id(self):
+        root = await task_create("Root")
+        await task_create("Child A", parent_id=root)
+        await task_create("Orphan")
+        result = await task_list(parent_id=root)
+        assert "Child A" in result
+        assert "Orphan" not in result
+
+    async def test_filter_invalid_status(self):
+        result = await task_list(status="bogus")
+        assert "error:invalid status" in result
+
+    async def test_filter_invalid_parent(self):
+        result = await task_list(parent_id="nonexistent")
+        assert result == "error:not found"
+
+    async def test_filter_combined(self):
+        root = await task_create("Root")
+        await task_create("Pending Child", parent_id=root)
+        active_id = await task_create("Active Child", parent_id=root)
+        await task_start(active_id)
+        result = await task_list(status="pending", parent_id=root)
+        assert "Pending Child" in result
+        assert "Active Child" not in result
+
+    async def test_no_filter_returns_all(self):
+        await task_create("Task A")
+        await task_create("Task B")
+        result = await task_list()
+        assert "Task A" in result
+        assert "Task B" in result
+
+
 class TestTaskGet:
     async def test_task_get_not_found(self):
         result = await task_get("nonexistent")

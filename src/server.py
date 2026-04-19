@@ -473,6 +473,42 @@ async def task_resume(root_id: str | None = None) -> str:
 
 
 @mcp.tool()
+async def task_context(task_id: str, max_chars: int = 5000) -> str:
+    """Get completed sibling outputs as context for a task.
+
+    Returns the agent_output from all completed siblings (same parent)
+    that were created before this task, ordered by creation time.
+    Useful for feeding upstream agent outputs to downstream agents.
+
+    Args:
+        task_id: The task that needs context from prior steps
+        max_chars: Maximum total characters in response (truncates oldest first)
+    """
+    task = await db.get_task(task_id)
+    if not task:
+        return "error:not found"
+
+    if not task.parent_id:
+        return "No context available (root task)."
+
+    siblings = await db.get_children(task.parent_id)
+    context_entries = []
+    for sib in siblings:
+        if sib.id == task_id:
+            break
+        if sib.status == TaskStatus.DONE and sib.agent_output:
+            context_entries.append(f"## {sib.name}\n{sib.agent_output}")
+
+    if not context_entries:
+        return "No context from prior steps."
+
+    result = "\n\n".join(context_entries)
+    if len(result) > max_chars:
+        result = result[:max_chars] + "\n...(truncated)"
+    return result
+
+
+@mcp.tool()
 async def task_list(
     status: str | None = None,
     parent_id: str | None = None,

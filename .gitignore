@@ -6,3 +6,8 @@ data/
 *.db
 *.db-wal
 *.db-shm
+.coverage
+htmlcov/
+.pytest_cache/
+dist/
+*.egg-info

@@ -8,15 +8,14 @@ Each workflow is a list of steps. Each step has:
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
 class WorkflowStep:
     name: str
     description: str
-    verification_criteria: Optional[str] = None
-    agent: Optional[str] = None
+    verification_criteria: str | None = None
+    agent: str | None = None
 
 
 WORKFLOWS: dict[str, list[WorkflowStep]] = {

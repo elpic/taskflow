@@ -1,20 +1,17 @@
-import json
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from mcp.server.fastmcp import FastMCP
 
 from . import db
 from .models import TaskStatus
-from .workflows import get_workflow, list_types, WORKFLOWS
 from .verification import (
     TransitionError,
-    validate_transition,
-    compute_start_fields,
     compute_complete_fields,
-    compute_verify_fields,
     compute_fail_fields,
+    compute_start_fields,
+    validate_transition,
 )
+from .workflows import WORKFLOWS, get_workflow
 
 mcp = FastMCP("taskflow")
 
@@ -23,9 +20,9 @@ mcp = FastMCP("taskflow")
 async def task_create(
     name: str,
     description: str = "",
-    parent_id: Optional[str] = None,
-    verification_criteria: Optional[str] = None,
-    task_type: Optional[str] = None,
+    parent_id: str | None = None,
+    verification_criteria: str | None = None,
+    task_type: str | None = None,
 ) -> str:
     """Create a new task. If task_type is specified, auto-generates workflow subtasks.
 
@@ -34,7 +31,9 @@ async def task_create(
         description: What needs to be done
         parent_id: Parent task ID for nesting
         verification_criteria: What to check before marking done
-        task_type: Workflow type (simple, implement, bugfix, refactor, research, secure-implement, product, sprint, discover, setup). Auto-creates subtasks with agent assignments.
+        task_type: Workflow type (simple, implement, bugfix, refactor, research,
+            secure-implement, product, sprint, discover, setup).
+            Auto-creates subtasks with agent assignments.
     """
     try:
         task = await db.create_task(
@@ -111,7 +110,7 @@ async def task_complete(task_id: str) -> str:
     if task.status == TaskStatus.VERIFYING and verify_children:
         if not all(c.status == TaskStatus.DONE for c in verify_children):
             return "error:verification not done"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         await db.update_task(task_id, status=TaskStatus.DONE.value, completed_at=now)
         return "ok"
 

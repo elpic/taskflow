@@ -18,7 +18,10 @@ STATUS_LABELS = {
 
 
 def build_tree(tasks: list[Task]) -> list[Task]:
-    """Build tree structure from flat task list. Returns root nodes with children populated."""
+    """Build tree structure from flat task list.
+
+    Returns root nodes with children populated.
+    """
     by_id: dict[str, Task] = {}
     for t in tasks:
         t.children = []
@@ -34,7 +37,9 @@ def build_tree(tasks: list[Task]) -> list[Task]:
     return roots
 
 
-def render_task(task: Task, prefix: str = "", is_last: bool = True, is_root: bool = True) -> str:
+def render_task(
+    task: Task, prefix: str = "", is_last: bool = True, is_root: bool = True
+) -> str:
     """Render a single task and its children as a tree string."""
     icon = STATUS_ICONS[task.status]
     label = STATUS_LABELS[task.status]

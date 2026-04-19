@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_taskflow_taskflow__task_start",
+      "mcp__plugin_taskflow_taskflow__task_complete",
+      "Bash(uv run:*)",
+      "Bash(rtk ls:*)"
+    ]
+  }
+}

@@ -305,6 +305,22 @@ async def update_task(task_id: str, **fields) -> Task:
     return _row_to_task(row)
 
 
+async def reset_task(task_id: str) -> None:
+    """Reset a task to pending with cleared timing and output fields."""
+    db = await get_db()
+    await db.execute(
+        """UPDATE tasks SET
+            status = ?,
+            started_at = NULL,
+            completed_at = NULL,
+            agent_output = NULL,
+            verification_result = NULL
+           WHERE id = ?""",
+        (TaskStatus.PENDING.value, task_id),
+    )
+    await db.commit()
+
+
 async def move_task(task_id: str, new_parent_id: str | None) -> None:
     db = await get_db()
     # Cycle detection: walk up from new_parent to root

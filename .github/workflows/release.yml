@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   release:
@@ -16,58 +17,122 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
-      - name: Read version from pyproject.toml
-        id: version
+      - name: Get latest tag version
+        id: current
         run: |
-          VERSION=$(python3 -c "
-          import re
-          with open('pyproject.toml') as f:
-              m = re.search(r'version\s*=\s*\"(\d+\.\d+\.\d+)\"', f.read())
-              print(m.group(1))
-          ")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Check if tag already exists
-        id: check
-        run: |
-          if git ls-remote --tags origin "${{ steps.version.outputs.tag }}" | grep -q .; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
+          TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
+          if [ -z "$TAG" ]; then
+            echo "version=0.0.0" >> "$GITHUB_OUTPUT"
           else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           fi
+          echo "Latest tag: ${TAG:-none}"
 
-      - name: Skip if tag exists
-        if: steps.check.outputs.exists == 'true'
-        run: echo "Tag ${{ steps.version.outputs.tag }} already exists — skipping."
-
-      - name: Get commit message for release notes
-        if: steps.check.outputs.exists == 'false'
-        id: notes
+      - name: Determine bump type from commit message
+        id: bump
         run: |
           MSG=$(git log -1 --pretty=%s)
+          AUTHOR=$(git log -1 --pretty=%an)
           echo "msg=$MSG" >> "$GITHUB_OUTPUT"
 
-      - name: Set up uv and build wheel
-        if: steps.check.outputs.exists == 'false'
+          # Skip version-sync commits from this workflow
+          if [ "$AUTHOR" = "github-actions[bot]" ]; then
+            echo "type=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if echo "$MSG" | grep -qiE '^feat(\(.*\))?!:|BREAKING CHANGE'; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif echo "$MSG" | grep -qiE '^feat(\(.*\))?:'; then
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          elif echo "$MSG" | grep -qiE '^(fix|perf|refactor)(\(.*\))?:'; then
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute next version
+        if: steps.bump.outputs.type != 'none'
+        id: next
+        run: |
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${{ steps.current.outputs.version }}"
+          BUMP="${{ steps.bump.outputs.type }}"
+
+          if [ "$BUMP" = "major" ]; then
+            MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
+          elif [ "$BUMP" = "minor" ]; then
+            MINOR=$((MINOR + 1)); PATCH=0
+          elif [ "$BUMP" = "patch" ]; then
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEXT="${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "Bump: ${{ steps.current.outputs.version }} → $NEXT ($BUMP)"
+
+      - name: Set up uv
+        if: steps.bump.outputs.type != 'none'
         uses: astral-sh/setup-uv@v4
 
       - name: Build wheel
-        if: steps.check.outputs.exists == 'false'
+        if: steps.bump.outputs.type != 'none'
         run: uv build
 
       - name: Create tag and release
-        if: steps.check.outputs.exists == 'false'
+        if: steps.bump.outputs.type != 'none'
         run: |
-          TAG="${{ steps.version.outputs.tag }}"
+          TAG="v${{ steps.next.outputs.version }}"
           git tag "$TAG"
           git push origin "$TAG"
 
           gh release create "$TAG" \
             --title "$TAG" \
-            --notes "${{ steps.notes.outputs.msg }}" \
+            --notes "${{ steps.bump.outputs.msg }}" \
             --latest \
             dist/*
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync version files via PR
+        if: steps.bump.outputs.type != 'none'
+        run: |
+          NEXT="${{ steps.next.outputs.version }}"
+          BRANCH="chore/version-sync-${NEXT}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+          # Update pyproject.toml
+          sed -i "s/^version = \".*\"/version = \"${NEXT}\"/" pyproject.toml
+
+          # Update plugin.json
+          python3 -c "
+          import json
+          with open('.claude-plugin/plugin.json') as f:
+              data = json.load(f)
+          data['version'] = '${NEXT}'
+          with open('.claude-plugin/plugin.json', 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          "
+
+          git add pyproject.toml .claude-plugin/plugin.json
+          git commit -m "chore: sync version to ${NEXT}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "chore: sync version to ${NEXT}" \
+            --body "Auto-generated by release workflow after v${NEXT} tag." \
+            --base main \
+            --head "$BRANCH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Skip if no bump needed
+        if: steps.bump.outputs.type == 'none'
+        run: echo "No conventional commit prefix (feat/fix/perf/refactor) — skipping release."

@@ -64,6 +64,10 @@ async def task_create(
                 await db.delete_task(task.id)
                 return f"error:{e}"
 
+        await db.log_event(
+            task.id, "created", {"name": task.name, "parent_id": parent_id}
+        )
+
         if task_type:
             steps = get_workflow(task_type)
             step_info = []
@@ -112,6 +116,7 @@ async def task_start(task_id: str) -> str:
 
     task = await db.update_task(task_id, **compute_start_fields())
     await db.set_current_task(task_id)
+    await db.log_event(task_id, "started")
     return "ok"
 
 
@@ -174,6 +179,10 @@ async def task_complete(task_id: str, output: str | None = None) -> str:
     if task.status == TaskStatus.VERIFYING and verify_children:
         now = datetime.now(UTC).isoformat()
         await db.update_task(task_id, status=TaskStatus.DONE.value, completed_at=now)
+        details: dict = {}
+        if output:
+            details["output_snippet"] = output[:200]
+        await db.log_event(task_id, "completed", details or None)
         return await _append_unblocked(task_id, "ok")
 
     try:
@@ -185,6 +194,10 @@ async def task_complete(task_id: str, output: str | None = None) -> str:
     await db.update_task(task_id, **fields)
     # Only append unblocked info when the task actually reaches DONE
     if fields.get("status") == TaskStatus.DONE.value:
+        complete_details: dict = {}
+        if output:
+            complete_details["output_snippet"] = output[:200]
+        await db.log_event(task_id, "completed", complete_details or None)
         return await _append_unblocked(task_id, "ok")
     return "ok"
 
@@ -217,6 +230,7 @@ async def task_fail(task_id: str, reason: str) -> str:
         return f"error:{e}"
 
     await db.update_task(task_id, **compute_fail_fields(reason))
+    await db.log_event(task_id, "failed", {"reason": reason})
     return "ok"
 
 
@@ -234,6 +248,7 @@ async def task_delete(task_id: str) -> str:
     if task.status == TaskStatus.IN_PROGRESS:
         return "error:cannot delete in-progress task"
 
+    await db.log_event(task_id, "deleted", {"name": task.name})
     await db.delete_task(task_id)
     return "ok"
 
@@ -255,11 +270,17 @@ async def task_move(task_id: str, new_parent_id: str | None = None) -> str:
         if not parent:
             return "error:parent not found"
 
+    old_parent_id = task.parent_id
     try:
         await db.move_task(task_id, new_parent_id)
     except ValueError as e:
         return f"error:{e}"
 
+    await db.log_event(
+        task_id,
+        "moved",
+        {"old_parent_id": old_parent_id, "new_parent_id": new_parent_id},
+    )
     return "ok"
 
 
@@ -623,6 +644,36 @@ def _format_duration(td: timedelta) -> str:
     hours = minutes // 60
     minutes = minutes % 60
     return f"{hours}h {minutes}m"
+
+
+@mcp.tool()
+async def task_history(task_id: str, recursive: bool = False) -> str:
+    """Return the audit trail of state changes for a task.
+
+    Args:
+        task_id: The task to retrieve history for
+        recursive: If True, include events for all descendant tasks as well
+    """
+    task = await db.get_task(task_id)
+    if not task:
+        return "error:not found"
+
+    events = await db.get_task_history(task_id, recursive=recursive)
+    if not events:
+        return "No events found."
+
+    lines = []
+    for event in events:
+        details_str = ""
+        with contextlib.suppress(Exception):
+            details = json.loads(event["details"])
+            if details:
+                details_str = " — " + ", ".join(f"{k}: {v}" for k, v in details.items())
+        lines.append(
+            f"[{event['timestamp']}] {event['event_type']}:"
+            f" {event['task_name']}{details_str}"
+        )
+    return "\n".join(lines)
 
 
 @mcp.tool()

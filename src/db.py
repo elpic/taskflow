@@ -49,6 +49,16 @@ CREATE TABLE IF NOT EXISTS task_dependencies (
     FOREIGN KEY (blocked_by_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_deps_blocked_by ON task_dependencies(blocked_by_id);
+
+CREATE TABLE IF NOT EXISTS task_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    details TEXT DEFAULT '{}',
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id);
 """
 
 
@@ -102,6 +112,25 @@ async def get_db() -> aiosqlite.Connection:
                     await db.execute(
                         "CREATE INDEX IF NOT EXISTS idx_deps_blocked_by"
                         " ON task_dependencies(blocked_by_id)"
+                    )
+                # Migration: add task_events table if missing
+                try:
+                    await db.execute("SELECT 1 FROM task_events LIMIT 0")
+                except Exception:
+                    await db.execute(
+                        """CREATE TABLE IF NOT EXISTS task_events (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            task_id TEXT NOT NULL,
+                            event_type TEXT NOT NULL,
+                            timestamp TEXT NOT NULL,
+                            details TEXT DEFAULT '{}',
+                            FOREIGN KEY (task_id) REFERENCES tasks(id)
+                                ON DELETE CASCADE
+                        )"""
+                    )
+                    await db.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_events_task"
+                        " ON task_events(task_id)"
                     )
                 await db.commit()
                 _initialized = True
@@ -502,6 +531,81 @@ async def find_active_root() -> "Task | None":
         )
         row = await cursor.fetchone()
         return _row_to_task(row) if row else None
+    finally:
+        await db.close()
+
+
+async def log_event(
+    task_id: str,
+    event_type: str,
+    details: dict | None = None,
+) -> None:
+    """Append an event to the audit trail for a task."""
+    now = datetime.now(UTC).isoformat()
+    details_json = json.dumps(details or {})
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT INTO task_events (task_id, event_type, timestamp, details)"
+            " VALUES (?, ?, ?, ?)",
+            (task_id, event_type, now, details_json),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def get_task_history(
+    task_id: str,
+    recursive: bool = False,
+) -> list[dict]:
+    """Return the event log for a task, optionally including all descendants.
+
+    Each entry is a dict with keys: event_type, timestamp, task_name, details.
+    """
+    db = await get_db()
+    try:
+        if recursive:
+            # Collect all descendant IDs via BFS
+            all_ids = [task_id]
+            queue = [task_id]
+            while queue:
+                current = queue.pop(0)
+                cursor = await db.execute(
+                    "SELECT id FROM tasks WHERE parent_id = ?", (current,)
+                )
+                rows = await cursor.fetchall()
+                for row in rows:
+                    all_ids.append(row["id"])
+                    queue.append(row["id"])
+            placeholders = ",".join("?" * len(all_ids))
+            cursor = await db.execute(
+                f"""SELECT e.event_type, e.timestamp, e.details, t.name AS task_name
+                    FROM task_events e
+                    JOIN tasks t ON t.id = e.task_id
+                    WHERE e.task_id IN ({placeholders})
+                    ORDER BY e.timestamp ASC""",
+                all_ids,
+            )
+        else:
+            cursor = await db.execute(
+                """SELECT e.event_type, e.timestamp, e.details, t.name AS task_name
+                   FROM task_events e
+                   JOIN tasks t ON t.id = e.task_id
+                   WHERE e.task_id = ?
+                   ORDER BY e.timestamp ASC""",
+                (task_id,),
+            )
+        rows = await cursor.fetchall()
+        return [
+            {
+                "event_type": row["event_type"],
+                "timestamp": row["timestamp"],
+                "task_name": row["task_name"],
+                "details": row["details"],
+            }
+            for row in rows
+        ]
     finally:
         await db.close()
 

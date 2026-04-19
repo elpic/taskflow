@@ -34,6 +34,7 @@ def _make_task(
     created_at: str = "2024-01-01T00:00:00+00:00",
     started_at: str | None = None,
     completed_at: str | None = None,
+    agent_output: str | None = None,
 ) -> Task:
     return Task(
         id=id,
@@ -47,6 +48,7 @@ def _make_task(
         created_at=created_at,
         started_at=started_at,
         completed_at=completed_at,
+        agent_output=agent_output,
     )
 
 

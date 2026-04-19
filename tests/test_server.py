@@ -260,3 +260,34 @@ class TestIdempotentCreation:
         # First call returns full workflow response, second returns just the ID
         root_id = result1.split("|")[0]
         assert result2 == root_id
+
+
+class TestAgentOutput:
+    async def test_complete_with_output(self):
+        task_id = await task_create("Task")
+        await task_start(task_id)
+        result = await task_complete(task_id, output="Design: use hexagonal arch")
+        assert result == "ok"
+        details = await task_get(task_id)
+        assert "Output: Design: use hexagonal arch" in details
+
+    async def test_complete_without_output(self):
+        task_id = await task_create("Task")
+        result = await task_complete(task_id)
+        assert result == "ok"
+        details = await task_get(task_id)
+        assert "Output:" not in details
+
+    async def test_output_persists_on_get(self):
+        task_id = await task_create("Task")
+        await task_start(task_id)
+        await task_complete(task_id, output="Test results: 42 passed")
+        details = await task_get(task_id)
+        assert "Test results: 42 passed" in details
+
+    async def test_output_on_pending_task_auto_starts(self):
+        task_id = await task_create("Task")
+        result = await task_complete(task_id, output="Quick result")
+        assert result == "ok"
+        details = await task_get(task_id)
+        assert "Quick result" in details

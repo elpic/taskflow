@@ -95,11 +95,19 @@ async def task_start(task_id: str) -> str:
 
 
 @mcp.tool()
-async def task_complete(task_id: str) -> str:
-    """Complete a task. Auto-creates verification subtask if criteria exist."""
+async def task_complete(task_id: str, output: str | None = None) -> str:
+    """Complete a task. Auto-creates verification subtask if criteria exist.
+
+    Args:
+        task_id: The task ID to complete
+        output: Optional agent output to store (design docs, code summary, etc.)
+    """
     task = await db.get_task(task_id)
     if not task:
         return "error:not found"
+
+    if output:
+        await db.update_task(task_id, agent_output=output)
 
     if task.status == TaskStatus.PENDING:
         task = await db.update_task(task_id, **compute_start_fields())
@@ -175,6 +183,8 @@ async def task_get(task_id: str) -> str:
         parts.append(f"Criteria: {task.verification_criteria}")
     if task.metadata and task.metadata != "{}":
         parts.append(f"Metadata: {task.metadata}")
+    if task.agent_output:
+        parts.append(f"Output: {task.agent_output}")
 
     return "\n".join(parts)
 

@@ -64,6 +64,32 @@ The sprint loop MUST show visible progress using native tasks (TaskCreate/TaskUp
 
 This is NOT optional. The native task list IS the progress indicator for the user.
 
+### Drill-Down Navigation (REQUIRED)
+
+When entering a ticket's implement workflow, the native task list MUST switch from the ticket level to the implement step level. This lets the user see exactly which workflow step is active.
+
+**When starting a ticket's implement workflow:**
+1. Delete ALL ticket-level native tasks (`TaskUpdate(status=deleted)` for each)
+2. Create native tasks for the implement steps (Design → Implement → Tests → Review, etc.)
+3. Chain them with `addBlockedBy` matching the implement workflow order
+4. Set each to `in_progress` as work begins, `completed` as it finishes
+
+**When the implement workflow completes (all steps done):**
+1. Delete ALL implement-step native tasks
+2. Recreate the ticket-level native tasks with updated statuses
+3. The completed ticket shows as `completed`, remaining tickets still `pending`
+
+**Example flow the user sees:**
+```
+TICKET LEVEL:                    DRILL INTO TICKET 2:              BACK TO TICKET LEVEL:
+✓ Ticket 1: task_list            ○ Design solution                 ✓ Ticket 1: task_list
+◈ Ticket 2: task_get     →      ◈ Implement                  →    ✓ Ticket 2: task_get
+○ Ticket 3: task_current         ○ Create tests                    ◈ Ticket 3: task_current
+○ Ticket 4: task_update          ○ Code review                     ○ Ticket 4: task_update
+```
+
+This drill-down is NOT optional. It is the only way the user can see implement progress in the Claude UI.
+
 ### Step Details
 
 #### 1. Pick ticket
@@ -78,8 +104,10 @@ This is NOT optional. The native task list IS the progress indicator for the use
 #### 3. Implement
 - **MUST** call `task_create(name=ticket_name, task_type="implement", parent_id=ticket_id)` to create the implement workflow under the ticket
 - This generates child tasks with agent assignments: @tech-architect → @developer → @qa-engineer → @developer (docs) → @devops-engineer (containerize) → @code-reviewer
+- **DRILL DOWN** (see Drill-Down Navigation above): delete ticket-level native tasks, create native tasks for the implement steps with `addBlockedBy` chain, work through them
 - Work each step by delegating to its assigned agent via the Agent tool with `subagent_type`
 - If review/QA finds issues, loop back to @developer to fix, then re-test and re-review
+- When all implement steps are done: **DRILL UP** — delete implement-step native tasks, recreate ticket-level native tasks with updated statuses
 - Do NOT implement directly — the implement workflow ensures quality gates are followed
 
 #### 4. Commit

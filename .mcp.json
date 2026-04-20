@@ -3,7 +3,7 @@
     "taskflow": {
       "type": "stdio",
       "command": "uv",
-      "args": ["--directory", "${CLAUDE_PLUGIN_ROOT}", "run", "run.py"]
+      "args": ["run", "run.py"]
     }
   }
 }

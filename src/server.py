@@ -1,6 +1,7 @@
 import contextlib
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
@@ -15,7 +16,10 @@ from .verification import (
     compute_start_fields,
     validate_transition,
 )
-from .workflows import WORKFLOWS, get_workflow
+from .workflows import WORKFLOWS, get_workflow, set_custom_workflows_dir
+
+# Configure custom workflows directory (relative to CWD)
+set_custom_workflows_dir(Path.cwd() / ".taskflow" / "workflows")
 
 mcp = FastMCP("taskflow")
 
@@ -860,10 +864,19 @@ async def task_history(task_id: str, recursive: bool = False) -> str:
 @mcp.tool()
 async def task_types() -> str:
     """List all available task types and their workflow steps."""
+    from .workflows import _get_custom_workflows
+
     result = []
     for type_name, steps in WORKFLOWS.items():
         step_names = " → ".join(s.name for s in steps)
         result.append(f"{type_name}: {step_names}")
+
+    custom = _get_custom_workflows()
+    for type_name, steps in custom.items():
+        if type_name not in WORKFLOWS:
+            step_names = " → ".join(s.name for s in steps)
+            result.append(f"{type_name} [custom]: {step_names}")
+
     return "\n".join(result)
 
 

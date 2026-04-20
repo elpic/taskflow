@@ -5,14 +5,31 @@ description: "Automatically decompose any user request into tracked, verified su
 
 # Task Orchestration Protocol
 
+**CRITICAL RULE: You are the ORCHESTRATOR, not the implementor.** Your job is to coordinate agents. NEVER write code directly — always delegate to the appropriate agent via `Agent(subagent_type=...)`. Every feature, bugfix, and refactor MUST go through a workflow pipeline with agent delegation.
+
 For implementation/bugfix/refactor/research requests:
 
 1. Load project profile (.taskflow/project.json) or language standards
 2. Recall from mempalace (if available)
 3. `task_create` with appropriate `task_type` — agents are auto-assigned per step
 4. Create native tasks with `addBlockedBy` chains
-5. Use `task_next` to get the next step + agent + context — delegate to assigned agent
+5. Use `task_next` to get the next step + agent + context — **delegate to that agent**
 6. Verify inline, store learnings in mempalace after completion
+
+**The workflow per ticket:**
+```
+task_create(task_type="implement") → generates steps with agents
+    ↓
+task_next(root_id) → returns {step, agent, context}
+    ↓
+Agent(subagent_type=agent, prompt=context+task) → agent does the work
+    ↓
+task_complete(step_id, output=result) → stores output for next agent
+    ↓
+task_next(root_id) → next step... repeat until all_done
+```
+
+Do NOT shortcut this. Do NOT write code yourself. Delegate.
 
 ## Mode
 
@@ -90,13 +107,17 @@ This applies to @tech-architect designs and @code-reviewer feedback.
 3. Developer fixes, QA re-tests, Reviewer re-reviews
 4. Loop until clean (max 3 iterations)
 
-### When to Skip Steps
+### When to Skip Steps (ONLY these cases)
 
-Not every ticket needs the full pipeline. Use judgment:
-- **Size S tasks**: Skip architect, go straight to developer + tests + review
-- **Config/docs changes**: Skip QA + containerization
-- **Bug fixes**: Use `bugfix` type, not `implement`
-- **Already designed**: If you have a clear design, skip architect step
+You may simplify the pipeline ONLY for:
+- **Size S tasks**: Skip architect, but still delegate to @developer + @qa-engineer + @code-reviewer
+- **Config/docs-only changes**: Skip QA, but still delegate to @developer + @code-reviewer
+- **Bug fixes**: Use `task_type="bugfix"` which has its own pipeline
+
+You may NEVER skip:
+- **@developer delegation** — you must NOT write code yourself
+- **@qa-engineer or @code-reviewer** — quality gates are not optional
+- **task_create with task_type** — the workflow must be created in taskflow
 
 ---
 

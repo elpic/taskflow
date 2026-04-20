@@ -46,6 +46,17 @@ Every agent MUST receive context from the previous agent's output. Use `task_nex
 
 **Never delegate to an agent without context from prior steps.** The agent has no memory of what happened before — you MUST pass it.
 
+### Latest Docs Lookup (BEFORE implementing)
+
+Before any agent writes code, check for the latest documentation:
+
+1. **Use `context7`** (resolve-library-id → query-docs) for any library, framework, or tool being used
+2. **Even for well-known libraries** — APIs change. Don't rely on training data.
+3. **When to look up**: installing packages, calling APIs, configuring tools, writing framework-specific code
+4. **When NOT to look up**: pure business logic, internal code, project-specific patterns
+
+This prevents outdated API calls, deprecated patterns, and wrong method signatures.
+
 ### Agent Prompts Must Include
 
 1. **Project profile** — from `.taskflow/project.json` (language, tools, conventions)
@@ -53,6 +64,17 @@ Every agent MUST receive context from the previous agent's output. Use `task_nex
 3. **Task description + verification criteria** — from the task itself
 4. **Specific files to read/modify** — don't make agents search blindly
 5. **Whether to write code or just research** — agents don't know your intent
+6. **Latest docs** — if using a library/framework, include relevant docs from context7
+
+### Architecture Preference
+
+When designing new features or refactoring, prefer **hexagonal architecture** (ports & adapters):
+- Define ports (interfaces/protocols) at domain boundaries
+- Implement adapters for external integrations (DB, APIs, CLI)
+- Keep domain logic pure — no infrastructure imports in domain code
+- Separate inbound adapters (API handlers, CLI) from outbound adapters (repositories, clients)
+
+This applies to @tech-architect designs and @code-reviewer feedback.
 
 ### Agent Interaction Patterns
 

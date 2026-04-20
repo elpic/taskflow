@@ -1073,6 +1073,7 @@ class TestAdaptiveContextEngine:
         details_after = await task_get(task_id)
         assert "Summary:" not in details_after
 
+
 class TestParallelStepExecution:
     """Tests for the parallel step execution engine (depends_on DAG wiring)."""
 

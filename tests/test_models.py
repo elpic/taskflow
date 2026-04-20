@@ -35,6 +35,7 @@ def _make_task(
     started_at: str | None = None,
     completed_at: str | None = None,
     agent_output: str | None = None,
+    context_summary: str | None = None,
     position: int | None = None,
     idempotency_key: str | None = None,
 ) -> Task:
@@ -51,6 +52,7 @@ def _make_task(
         started_at=started_at,
         completed_at=completed_at,
         agent_output=agent_output,
+        context_summary=context_summary,
         position=position,
         idempotency_key=idempotency_key,
     )
@@ -81,3 +83,26 @@ class TestTask:
         task = _make_task(status=TaskStatus.IN_PROGRESS)
         assert task.status == TaskStatus.IN_PROGRESS
         assert task.status == "in_progress"
+
+    def test_task_has_context_summary_field(self):
+        task = _make_task()
+        assert hasattr(task, "context_summary")
+        assert task.context_summary is None
+
+    def test_task_context_summary_can_be_set(self):
+        task = Task(
+            id="abc12345",
+            name="Test task",
+            description="A description",
+            status=TaskStatus.PENDING,
+            parent_id=None,
+            verification_criteria=None,
+            verification_result=None,
+            metadata="{}",
+            created_at="2024-01-01T00:00:00+00:00",
+            started_at=None,
+            completed_at=None,
+            agent_output=None,
+            context_summary="A concise summary",
+        )
+        assert task.context_summary == "A concise summary"

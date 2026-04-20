@@ -39,6 +39,11 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
     ],
     "implement": [
         WorkflowStep(
+            name="Create branch",
+            description="Create a feature branch from main. Ensure main is up to date first (git pull origin main). Branch naming: feat/<ticket-slug>",
+            agent="git-workflow",
+        ),
+        WorkflowStep(
             name="Design solution",
             description="Analyze requirements, explore the codebase, and design the architecture and approach",
             agent="tech-architect",
@@ -82,8 +87,19 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
             verification_criteria="All acceptance criteria met, docs complete, container works, code quality is good",
             agent="code-reviewer",
         ),
+        WorkflowStep(
+            name="Commit and create PR",
+            description="Stage all changes, commit with a descriptive conventional commit message, push the branch, and create a pull request with full description including summary, changes, and test results",
+            verification_criteria="PR created with passing CI checks",
+            agent="git-workflow",
+        ),
     ],
     "bugfix": [
+        WorkflowStep(
+            name="Create branch",
+            description="Create a fix branch from main. Ensure main is up to date. Branch naming: fix/<bug-slug>",
+            agent="git-workflow",
+        ),
         WorkflowStep(
             name="Reproduce",
             description="Reproduce the bug consistently with clear steps",
@@ -113,8 +129,19 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
             verification_criteria="Fix is clean and introduces no new vulnerabilities",
             agent="code-reviewer",
         ),
+        WorkflowStep(
+            name="Commit and create PR",
+            description="Stage all changes, commit with a fix: conventional commit message, push the branch, and create a pull request",
+            verification_criteria="PR created with passing CI checks",
+            agent="git-workflow",
+        ),
     ],
     "refactor": [
+        WorkflowStep(
+            name="Create branch",
+            description="Create a refactor branch from main. Ensure main is up to date. Branch naming: refactor/<scope-slug>",
+            agent="git-workflow",
+        ),
         WorkflowStep(
             name="Analyze and plan",
             description="Understand the current code structure and design the refactoring approach",
@@ -137,6 +164,12 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
             description="Review the refactored code for quality and correctness",
             verification_criteria="Refactoring improves code without changing behavior",
             agent="code-reviewer",
+        ),
+        WorkflowStep(
+            name="Commit and create PR",
+            description="Stage all changes, commit with a refactor: conventional commit message, push the branch, and create a pull request",
+            verification_criteria="PR created with passing CI checks",
+            agent="git-workflow",
         ),
     ],
     "research": [
@@ -161,6 +194,11 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
         ),
     ],
     "secure-implement": [
+        WorkflowStep(
+            name="Create branch",
+            description="Create a feature branch from main. Ensure main is up to date. Branch naming: feat/<ticket-slug>",
+            agent="git-workflow",
+        ),
         WorkflowStep(
             name="Design solution",
             description="Analyze requirements and design the architecture with security in mind",
@@ -198,6 +236,12 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
             description="Final review for quality, correctness, and completeness",
             verification_criteria="All criteria met, code is production-ready",
             agent="code-reviewer",
+        ),
+        WorkflowStep(
+            name="Commit and create PR",
+            description="Stage all changes, commit with a conventional commit message, push the branch, and create a pull request",
+            verification_criteria="PR created with passing CI checks",
+            agent="git-workflow",
         ),
     ],
     "product": [

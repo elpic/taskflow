@@ -1,12 +1,28 @@
+from pathlib import Path
+
 import pytest
+import src.workflows as wf_module
 from src.workflows import (
     WORKFLOWS,
     WorkflowStep,
     get_workflow,
     list_types,
+    set_custom_workflows_dir,
     validate_all_workflows,
     validate_workflow,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_custom_workflows():
+    """Ensure custom workflows state is clean before and after each test."""
+    # Reset to a nonexistent directory so no custom workflows load during tests
+    original_dir = wf_module._custom_dir
+    original_cache = wf_module._custom_workflows
+    set_custom_workflows_dir(Path("/nonexistent/__test__"))
+    yield
+    wf_module._custom_dir = original_dir
+    wf_module._custom_workflows = original_cache
 
 
 class TestGetWorkflow:
@@ -167,3 +183,73 @@ class TestImplementWorkflowParallelStructure:
         assert "Create tests" in code_review_deps
         assert "Documentation" in code_review_deps
         assert "Containerization" in code_review_deps
+
+
+class TestCustomWorkflows:
+    def test_custom_workflow_loaded_from_directory(self, tmp_path: Path):
+        yaml_content = (
+            "name: custom-deploy\n"
+            "steps:\n"
+            "  - name: Build\n"
+            "    description: Build the artifact\n"
+            "  - name: Deploy\n"
+            "    description: Deploy to environment\n"
+        )
+        (tmp_path / "deploy.yaml").write_text(yaml_content)
+        set_custom_workflows_dir(tmp_path)
+
+        steps = get_workflow("custom-deploy")
+        assert len(steps) == 2
+        assert steps[0].name == "Build"
+
+    def test_custom_type_appears_in_list_types(self, tmp_path: Path):
+        (tmp_path / "ml.yaml").write_text(
+            "name: ml-train\nsteps:\n  - name: Train\n    description: Train model\n"
+        )
+        set_custom_workflows_dir(tmp_path)
+
+        types = list_types()
+        assert "ml-train" in types
+
+    def test_builtin_types_still_present_with_custom_dir(self, tmp_path: Path):
+        set_custom_workflows_dir(tmp_path)
+        types = list_types()
+        for expected in ("simple", "implement", "bugfix"):
+            assert expected in types
+
+    def test_custom_type_overrides_builtin_name(self, tmp_path: Path):
+        """A custom workflow named 'simple' replaces the built-in simple workflow."""
+        (tmp_path / "override.yaml").write_text(
+            "name: simple\nsteps:\n  - name: Custom step\n    description: Override\n"
+        )
+        set_custom_workflows_dir(tmp_path)
+
+        steps = get_workflow("simple")
+        assert steps[0].name == "Custom step"
+
+    def test_unknown_type_still_falls_back_to_simple(self, tmp_path: Path):
+        set_custom_workflows_dir(tmp_path)
+        steps = get_workflow("totally-unknown-type")
+        simple_steps = WORKFLOWS["simple"]
+        assert steps == simple_steps
+
+    def test_set_custom_workflows_dir_invalidates_cache(self, tmp_path: Path):
+        dir_a = tmp_path / "a"
+        dir_a.mkdir()
+        dir_b = tmp_path / "b"
+        dir_b.mkdir()
+
+        (dir_a / "wf.yaml").write_text(
+            "name: wf-a\nsteps:\n  - name: Step A\n    description: From A\n"
+        )
+        (dir_b / "wf.yaml").write_text(
+            "name: wf-b\nsteps:\n  - name: Step B\n    description: From B\n"
+        )
+
+        set_custom_workflows_dir(dir_a)
+        assert "wf-a" in list_types()
+        assert "wf-b" not in list_types()
+
+        set_custom_workflows_dir(dir_b)
+        assert "wf-b" in list_types()
+        assert "wf-a" not in list_types()

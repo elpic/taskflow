@@ -8,6 +8,7 @@ Each workflow is a list of steps. Each step has:
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -520,10 +521,42 @@ def validate_all_workflows() -> dict[str, list[str]]:
 _errors = validate_all_workflows()
 assert not _errors, f"Built-in workflow integrity failure: {_errors}"
 
+_custom_workflows: dict[str, list[WorkflowStep]] | None = None
+_custom_dir: Path | None = None
+
+
+def set_custom_workflows_dir(directory: Path) -> None:
+    """Set the directory to load custom workflows from. Call before get_workflow."""
+    global _custom_dir, _custom_workflows
+    _custom_dir = directory
+    _custom_workflows = None  # Force reload on next access
+
+
+def _get_custom_workflows() -> dict[str, list[WorkflowStep]]:
+    """Load and cache custom workflows from the configured directory."""
+    global _custom_workflows
+    if _custom_workflows is not None:
+        return _custom_workflows
+    if _custom_dir is None:
+        _custom_workflows = {}
+        return _custom_workflows
+    from .workflow_loader import load_custom_workflows
+
+    _custom_workflows = load_custom_workflows(_custom_dir)
+    return _custom_workflows
+
 
 def get_workflow(task_type: str) -> list[WorkflowStep]:
+    custom = _get_custom_workflows()
+    if task_type in custom:
+        return custom[task_type]
     return WORKFLOWS.get(task_type, WORKFLOWS["simple"])
 
 
 def list_types() -> list[str]:
-    return list(WORKFLOWS.keys())
+    custom = _get_custom_workflows()
+    all_types = list(WORKFLOWS.keys())
+    for name in custom:
+        if name not in WORKFLOWS:
+            all_types.append(name)
+    return all_types

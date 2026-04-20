@@ -1,0 +1,25 @@
+# Example custom workflow template for Taskflow
+# Place YAML files in .taskflow/workflows/ to define custom workflow types
+#
+# Usage: task_create(name="My task", task_type="ml-pipeline")
+
+name: ml-pipeline
+description: Machine learning model training and evaluation pipeline
+steps:
+  - name: Prepare data
+    description: Load, clean, and split data into train/test sets
+    agent: developer
+
+  - name: Train model
+    description: Train the model with prepared data
+    agent: developer
+    verification_criteria: Training completes without errors
+
+  - name: Evaluate model
+    description: Run evaluation metrics on test set
+    agent: qa-engineer
+    verification_criteria: Metrics logged and compared to baseline
+
+  - name: Review results
+    description: Review model performance and approve for deployment
+    agent: code-reviewer

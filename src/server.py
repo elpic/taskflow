@@ -27,6 +27,37 @@ mcp = FastMCP("taskflow")
 # Initialize hooks
 init_hooks(Path.cwd() / ".taskflow" / "hooks.json")
 
+_hint_shown: bool = False
+
+_FIRST_RUN_HINT = (
+    "\n\n---\n"
+    "💡 Hint: Create tasks with task_type to auto-generate workflow steps:\n"
+    '  task_create(name="Fix login bug", task_type="bugfix")\n\n'
+    "Available types: simple, implement, bugfix, refactor, research, "
+    "secure-implement, product, sprint, discover, setup\n"
+    "Use task_types() for full workflow details."
+)
+
+
+async def _maybe_hint(db_was_empty: bool | None = None) -> str:
+    """Return first-run hint once per session, empty string after.
+
+    Args:
+        db_was_empty: Pre-computed result of ``not has_tasks()`` taken *before*
+            any mutation in the current call.  When None the function queries
+            the DB itself (safe for read-only callers such as task_types).
+    """
+    global _hint_shown
+    if _hint_shown:
+        return ""
+    # Consume one-shot regardless; DB check below decides content
+    _hint_shown = True
+    if db_was_empty is None:
+        db_was_empty = not await db.has_tasks()
+    if not db_was_empty:
+        return ""
+    return _FIRST_RUN_HINT
+
 
 @mcp.tool()
 async def task_create(
@@ -56,7 +87,10 @@ async def task_create(
         if idempotency_key:
             existing = await db.find_task_by_idempotency_key(idempotency_key)
             if existing:
-                return existing.id
+                return existing.id  # Idempotent replay; no hint
+
+        # Snapshot emptiness *before* inserting so the hint check is accurate.
+        db_was_empty = not await db.has_tasks()
 
         task = await db.create_task(
             name=name,
@@ -117,9 +151,10 @@ async def task_create(
                         prev_id = name_to_id[steps[i - 1].name]
                         await db.add_dependencies(step_id, [prev_id])
 
-            return f"{task.id}|{task_type}|{','.join(step_info)}"
+            hint = await _maybe_hint(db_was_empty)
+            return f"{task.id}|{task_type}|{','.join(step_info)}" + hint
 
-        return task.id
+        return task.id + await _maybe_hint(db_was_empty)
     except ValueError as e:
         return f"error:{e}"
 
@@ -907,7 +942,7 @@ async def task_types() -> str:
             step_names = " → ".join(s.name for s in steps)
             result.append(f"{type_name} [custom]: {step_names}")
 
-    return "\n".join(result)
+    return "\n".join(result) + await _maybe_hint()
 
 
 @mcp.tool()

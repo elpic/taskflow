@@ -1,5 +1,6 @@
 import json
 
+from src import db
 from src.server import (
     task_complete,
     task_context,
@@ -1071,3 +1072,136 @@ class TestAdaptiveContextEngine:
         await task_reset(task_id)
         details_after = await task_get(task_id)
         assert "Summary:" not in details_after
+
+class TestParallelStepExecution:
+    """Tests for the parallel step execution engine (depends_on DAG wiring)."""
+
+    async def _complete_implement_steps_up_to(
+        self, result: str, up_to_name: str
+    ) -> dict[str, str]:
+        """Complete implement workflow steps up through the named step.
+
+        Uses db.update_task directly to force status=done, bypassing server-level
+        verification subtask creation so we can control the DAG state precisely.
+
+        Returns a mapping of step_name -> step_id for all steps.
+        """
+        from datetime import UTC, datetime
+
+        from src.workflows import WORKFLOWS
+
+        parts = result.split("|")
+        step_entries = parts[2].split(",")
+        step_names = [s.name for s in WORKFLOWS["implement"]]
+        name_to_id: dict[str, str] = {}
+        for i, entry in enumerate(step_entries):
+            step_id = entry.split(":")[0]
+            name_to_id[step_names[i]] = step_id
+
+        # Force each step to done in linear order up to (and including) up_to_name
+        now = datetime.now(UTC).isoformat()
+        for name in step_names:
+            step_id = name_to_id[name]
+            await db.update_task(step_id, status="done", completed_at=now)
+            if name == up_to_name:
+                break
+
+        return name_to_id
+
+    async def test_task_create_parallel_readiness(self):
+        """After completing Implement, three parallel steps become ready at once."""
+        result = await task_create("Parallel Feature", task_type="implement")
+        assert "|" in result, f"Expected workflow response, got: {result}"
+
+        await self._complete_implement_steps_up_to(result, "Implement")
+        root_id = result.split("|")[0]
+
+        # get_ready_tasks scoped to the root's children returns all 3 parallel steps
+        ready = await db.get_ready_tasks(parent_id=root_id)
+        ready_names = {t.name for t in ready}
+
+        assert "Create tests" in ready_names, f"Ready tasks: {ready_names}"
+        assert "Documentation" in ready_names, f"Ready tasks: {ready_names}"
+        assert "Containerization" in ready_names, f"Ready tasks: {ready_names}"
+        assert len(ready_names) == 3, (
+            f"Expected exactly 3 ready tasks, got: {ready_names}"
+        )
+
+        # task_next reports ONE ready step (the first ready it picks)
+        next_result = await task_next(root_id)
+        data = json.loads(next_result)
+        assert data["status"] == "next"
+        parallel_names = {"Create tests", "Documentation", "Containerization"}
+        assert data["step_name"] in parallel_names
+
+    async def test_task_create_linear_fallback(self):
+        """bugfix workflow (no depends_on) creates a strictly sequential chain."""
+        result = await task_create("A Bug", task_type="bugfix")
+        assert "|" in result, f"Expected workflow response, got: {result}"
+
+        root_id = result.split("|")[0]
+        parts = result.split("|")
+        step_entries = parts[2].split(",")
+        first_step_id = step_entries[0].split(":")[0]
+        second_step_id = step_entries[1].split(":")[0]
+
+        # Before completing any step, only the first should be ready
+        ready_before = await db.get_ready_tasks(parent_id=root_id)
+        ready_ids_before = {t.id for t in ready_before}
+        assert first_step_id in ready_ids_before
+        assert second_step_id not in ready_ids_before, (
+            "Second step should be blocked until first is done"
+        )
+
+        # Complete first step — only second should become ready (not all steps)
+        await task_complete(first_step_id)
+        ready_after = await db.get_ready_tasks(parent_id=root_id)
+        ready_ids_after = {t.id for t in ready_after}
+        assert second_step_id in ready_ids_after
+        # Must not have all steps unblocked at once
+        assert len(ready_ids_after) == 1, (
+            f"Expected only 1 ready step after first, got: {ready_ids_after}"
+        )
+
+    async def test_task_create_fan_in_blocks_until_all_done(self):
+        """Code review stays blocked until all three parallel steps are complete."""
+        from datetime import UTC, datetime
+
+        result = await task_create("Fan-In Feature", task_type="implement")
+        assert "|" in result, f"Expected workflow response, got: {result}"
+
+        root_id = result.split("|")[0]
+        name_to_id = await self._complete_implement_steps_up_to(result, "Implement")
+
+        now = datetime.now(UTC).isoformat()
+        code_review_id = name_to_id["Code review"]
+
+        # Complete only Create tests — Documentation and Containerization still pending
+        await db.update_task(
+            name_to_id["Create tests"], status="done", completed_at=now
+        )
+        ready = await db.get_ready_tasks(parent_id=root_id)
+        ready_ids = {t.id for t in ready}
+        assert code_review_id not in ready_ids, (
+            "Code review must stay blocked while Documentation/Containerization pending"
+        )
+
+        # Complete Documentation — Containerization still pending
+        await db.update_task(
+            name_to_id["Documentation"], status="done", completed_at=now
+        )
+        ready = await db.get_ready_tasks(parent_id=root_id)
+        ready_ids = {t.id for t in ready}
+        assert code_review_id not in ready_ids, (
+            "Code review must stay blocked while Containerization is still pending"
+        )
+
+        # Complete Containerization — now Code review should unblock
+        await db.update_task(
+            name_to_id["Containerization"], status="done", completed_at=now
+        )
+        ready = await db.get_ready_tasks(parent_id=root_id)
+        ready_ids = {t.id for t in ready}
+        assert code_review_id in ready_ids, (
+            "Code review should be ready once all three parallel steps are done"
+        )

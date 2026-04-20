@@ -1,5 +1,12 @@
 import pytest
-from src.workflows import WORKFLOWS, WorkflowStep, get_workflow, list_types
+from src.workflows import (
+    WORKFLOWS,
+    WorkflowStep,
+    get_workflow,
+    list_types,
+    validate_all_workflows,
+    validate_workflow,
+)
 
 
 class TestGetWorkflow:
@@ -77,3 +84,86 @@ class TestWorkflowStepStructure:
                 assert step.verification_criteria is None or isinstance(
                     step.verification_criteria, str
                 )
+
+    def test_workflow_step_has_depends_on_field(self):
+        step = WorkflowStep(name="Step A", description="Do something")
+        assert step.depends_on is None
+
+    def test_workflow_step_explicit_depends_on(self):
+        step = WorkflowStep(
+            name="Step B", description="Depends on A", depends_on=["Step A"]
+        )
+        assert step.depends_on == ["Step A"]
+
+
+class TestValidateWorkflows:
+    def test_validate_all_workflows_pass(self):
+        errors = validate_all_workflows()
+        assert errors == {}, f"Unexpected workflow errors: {errors}"
+
+    def test_validate_workflow_detects_unknown_reference(self):
+        bad_steps = [
+            WorkflowStep(name="Start", description="First step", depends_on=[]),
+            WorkflowStep(
+                name="Finish",
+                description="Second step",
+                depends_on=["Nonexistent Step"],
+            ),
+        ]
+        WORKFLOWS["_test_unknown_ref"] = bad_steps
+        try:
+            errors = validate_workflow("_test_unknown_ref")
+        finally:
+            del WORKFLOWS["_test_unknown_ref"]
+        assert len(errors) > 0
+        assert any("Nonexistent Step" in e for e in errors)
+
+    def test_validate_workflow_detects_self_dependency(self):
+        bad_steps = [
+            WorkflowStep(
+                name="Self Loop",
+                description="Depends on itself",
+                depends_on=["Self Loop"],
+            ),
+        ]
+        WORKFLOWS["_test_self_dep"] = bad_steps
+        try:
+            errors = validate_workflow("_test_self_dep")
+        finally:
+            del WORKFLOWS["_test_self_dep"]
+        assert len(errors) > 0
+        assert any("itself" in e or "Self Loop" in e for e in errors)
+
+    def test_validate_workflow_detects_cycle(self):
+        cyclic_steps = [
+            WorkflowStep(name="Step A", description="A", depends_on=["Step B"]),
+            WorkflowStep(name="Step B", description="B", depends_on=["Step A"]),
+        ]
+        WORKFLOWS["_test_cycle"] = cyclic_steps
+        try:
+            errors = validate_workflow("_test_cycle")
+        finally:
+            del WORKFLOWS["_test_cycle"]
+        assert len(errors) > 0
+        assert any("cycle" in e.lower() for e in errors)
+
+
+class TestImplementWorkflowParallelStructure:
+    def test_implement_workflow_has_parallel_steps(self):
+        steps = {s.name: s for s in WORKFLOWS["implement"]}
+        parallel_step_names = ["Create tests", "Documentation", "Containerization"]
+        for name in parallel_step_names:
+            assert name in steps, f"Step '{name}' not found in implement workflow"
+            assert steps[name].depends_on == ["Implement"], (
+                f"Step '{name}' should depend only on ['Implement'], "
+                f"got {steps[name].depends_on}"
+            )
+
+    def test_implement_workflow_code_review_fans_in(self):
+        steps = {s.name: s for s in WORKFLOWS["implement"]}
+        assert "Code review" in steps
+        code_review_deps = steps["Code review"].depends_on
+        assert code_review_deps is not None
+        assert "Create tests" in code_review_deps
+        assert "Documentation" in code_review_deps
+        assert "Containerization" in code_review_deps

@@ -154,6 +154,41 @@ TICKET LEVEL:                    DRILL INTO TICKET 2:              BACK TO TICKE
 ○ Ticket 4: task_update          ○ Code review                     ○ Ticket 4: task_update
 ```
 
+---
+
+## Git Workflow (Delegated to @git-workflow)
+
+Git operations in the continuous delivery loop MUST be delegated to the `@git-workflow` agent — do NOT run git commands directly.
+
+### Per-Ticket Git Flow
+
+**Before implementing:**
+```
+Agent(subagent_type="git-workflow", prompt="Create a feature branch from main for: <ticket name>. 
+Ensure main is up to date. Branch naming: feat/<ticket-slug> or fix/<ticket-slug>.")
+```
+
+**After all implement steps complete:**
+```
+Agent(subagent_type="git-workflow", prompt="Stage all changes, commit with this message: <message>.
+Push the branch and create a PR with this description: <PR body>.
+Wait for CI checks to pass. If CI fails, report the failure logs.")
+```
+
+**After PR is approved/CI passes:**
+```
+Agent(subagent_type="git-workflow", prompt="Squash merge PR #<number>. 
+Pull main, delete the feature branch, verify clean state.")
+```
+
+### Why Delegate Git?
+- The orchestrator can make mistakes with git (wrong branch, missing files, force pushes)
+- `@git-workflow` is a specialist that follows safe git hygiene
+- It reads the project's git configuration and respects branch protection
+- It handles edge cases (conflicts, stale branches, hook failures)
+
+---
+
 ### Sprint Progress Tracking
 
 **Before the loop starts:**

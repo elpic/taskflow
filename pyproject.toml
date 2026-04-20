@@ -1,6 +1,6 @@
 [project]
 name = "taskflow"
-version = "1.19.0"
+version = "2.0.0"
 description = "Hierarchical task orchestration plugin for Claude Code"
 requires-python = ">=3.11"
 dependencies = [

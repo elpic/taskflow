@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from mcp.server.fastmcp import FastMCP
 
 from . import db
+from .analytics import agent_performance, step_bottlenecks, velocity, workflow_summary
 from .models import TaskStatus
 from .tree import render_subtree, render_tree
 from .verification import (
@@ -864,6 +865,30 @@ async def task_types() -> str:
         step_names = " → ".join(s.name for s in steps)
         result.append(f"{type_name}: {step_names}")
     return "\n".join(result)
+
+
+@mcp.tool()
+async def task_analytics(query: str, days: int = 30) -> str:
+    """Get aggregate workflow analytics.
+
+    Args:
+        query: Type of analytics — workflow_summary, step_bottlenecks,
+            agent_performance, or velocity
+        days: Number of days to analyze (default 30)
+    """
+    queries = {
+        "workflow_summary": workflow_summary,
+        "step_bottlenecks": step_bottlenecks,
+        "agent_performance": agent_performance,
+        "velocity": velocity,
+    }
+
+    handler = queries.get(query)
+    if not handler:
+        valid = ", ".join(sorted(queries.keys()))
+        return f"error:unknown query '{query}'. Valid: {valid}"
+
+    return await handler(days=days)
 
 
 if __name__ == "__main__":

@@ -122,12 +122,17 @@ async def task_start(task_id: str) -> str:
 
 
 @mcp.tool()
-async def task_complete(task_id: str, output: str | None = None) -> str:
+async def task_complete(
+    task_id: str, output: str | None = None, summary: str | None = None
+) -> str:
     """Complete a task. Auto-creates verification subtask if criteria exist.
 
     Args:
         task_id: The task ID to complete
         output: Optional agent output to store (design docs, code summary, etc.)
+        summary: Optional concise summary of the output. When provided, downstream
+            tasks will receive this instead of a truncated slice of `output`,
+            giving agents higher-quality context without token bloat.
     """
     task = await db.get_task(task_id)
     if not task:
@@ -162,8 +167,13 @@ async def task_complete(task_id: str, output: str | None = None) -> str:
             return f"error:{e}"
 
     # All preconditions passed — now modify state
+    update_fields = {}
     if output:
-        await db.update_task(task_id, agent_output=output)
+        update_fields["agent_output"] = output
+    if summary:
+        update_fields["context_summary"] = summary
+    if update_fields:
+        await db.update_task(task_id, **update_fields)
 
     if task.status == TaskStatus.PENDING:
         task = await db.update_task(task_id, **compute_start_fields())
@@ -335,6 +345,8 @@ async def task_get(task_id: str) -> str:
         parts.append(f"Criteria: {task.verification_criteria}")
     if task.metadata and task.metadata != "{}":
         parts.append(f"Metadata: {task.metadata}")
+    if task.context_summary:
+        parts.append(f"Summary: {task.context_summary}")
     if task.agent_output:
         parts.append(f"Output: {task.agent_output}")
 
@@ -489,7 +501,11 @@ async def task_resume(root_id: str | None = None) -> str:
     )
     siblings = await db.get_children(sibling_parent_id)
     for sibling in siblings:
-        if sibling.status == TaskStatus.DONE and sibling.agent_output:
+        if sibling.status != TaskStatus.DONE:
+            continue
+        if sibling.context_summary:
+            context_lines.append(f"  - {sibling.name}: {sibling.context_summary}")
+        elif sibling.agent_output:
             truncated = sibling.agent_output[:500]
             if len(sibling.agent_output) > 500:
                 truncated += "…"
@@ -568,11 +584,17 @@ async def task_next(root_id: str) -> str:
             for sib in siblings:
                 if sib.id == next_task.id:
                     break
-                if sib.status == TaskStatus.DONE and sib.agent_output:
-                    truncated = sib.agent_output[:500]
+                if sib.status != TaskStatus.DONE:
+                    continue
+                if sib.context_summary:
+                    context_text = sib.context_summary
+                elif sib.agent_output:
+                    context_text = sib.agent_output[:500]
                     if len(sib.agent_output) > 500:
-                        truncated += "…"
-                    context_entries.append({"step": sib.name, "output": truncated})
+                        context_text += "…"
+                else:
+                    continue  # skip siblings with no output
+                context_entries.append({"step": sib.name, "output": context_text})
 
         # Build breadcrumb from next_task up to root_id (exclusive of root name)
         breadcrumb_parts: list[str] = []

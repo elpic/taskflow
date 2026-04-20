@@ -982,3 +982,92 @@ class TestTaskReset:
         await task_reset(task_id)
         details = await task_get(task_id)
         assert "Output:" not in details
+
+
+class TestAdaptiveContextEngine:
+    async def test_task_complete_stores_summary(self):
+        task_id = await task_create("Task")
+        await task_start(task_id)
+        result = await task_complete(
+            task_id,
+            output="Detailed output from the agent run",
+            summary="Concise summary for downstream",
+        )
+        assert result == "ok"
+        details = await task_get(task_id)
+        assert "Output: Detailed output from the agent run" in details
+        assert "Summary: Concise summary for downstream" in details
+
+    async def test_task_complete_summary_only(self):
+        task_id = await task_create("Task")
+        await task_start(task_id)
+        result = await task_complete(task_id, summary="Summary without output")
+        assert result == "ok"
+        details = await task_get(task_id)
+        assert "Summary: Summary without output" in details
+        assert "Output:" not in details
+
+    async def test_task_next_prefers_summary_over_truncated_output(self):
+        root_id = await task_create("Pipeline Root")
+        step1_id = await task_create("Design Step", parent_id=root_id)
+        await task_create("Implement Step", parent_id=root_id, blocked_by=[step1_id])
+        long_output = "x" * 600  # longer than 500-char truncation threshold
+        summary_text = "Use ports-and-adapters architecture"
+        await task_start(step1_id)
+        await task_complete(step1_id, output=long_output, summary=summary_text)
+
+        result = await task_next(root_id)
+        data = json.loads(result)
+
+        assert data["status"] == "next"
+        assert len(data["context"]) == 1
+        assert data["context"][0]["output"] == summary_text
+        assert "x" * 10 not in data["context"][0]["output"]
+
+    async def test_task_next_falls_back_to_truncated_when_no_summary(self):
+        root_id = await task_create("Pipeline Root")
+        step1_id = await task_create("Design Step", parent_id=root_id)
+        await task_create("Implement Step", parent_id=root_id, blocked_by=[step1_id])
+        long_output = "y" * 600  # longer than 500-char truncation threshold
+        await task_start(step1_id)
+        await task_complete(step1_id, output=long_output)
+
+        result = await task_next(root_id)
+        data = json.loads(result)
+
+        assert data["status"] == "next"
+        assert len(data["context"]) == 1
+        context_output = data["context"][0]["output"]
+        # Should be truncated to 500 chars plus ellipsis marker
+        assert context_output == "y" * 500 + "…"
+
+    async def test_task_resume_prefers_summary(self):
+        root_id = await task_create("Resume Root")
+        await task_start(root_id)
+        step1_id = await task_create("Design Step", parent_id=root_id)
+        step2_id = await task_create(
+            "Implement Step", parent_id=root_id, blocked_by=[step1_id]
+        )
+        long_output = "z" * 600
+        summary_text = "Hexagonal arch chosen"
+        await task_start(step1_id)
+        await task_complete(step1_id, output=long_output, summary=summary_text)
+        await task_start(step2_id)
+
+        result = await task_resume(root_id=root_id)
+
+        assert "Context from completed steps:" in result
+        assert summary_text in result
+        # The raw long output should NOT appear (not even truncated)
+        assert "z" * 10 not in result
+
+    async def test_task_reset_clears_summary(self):
+        task_id = await task_create("Task")
+        await task_start(task_id)
+        await task_complete(task_id, summary="Important context summary")
+        details_before = await task_get(task_id)
+        assert "Summary: Important context summary" in details_before
+
+        await task_reset(task_id)
+        details_after = await task_get(task_id)
+        assert "Summary:" not in details_after

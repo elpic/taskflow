@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     started_at TEXT,
     completed_at TEXT,
     agent_output TEXT,
+    context_summary TEXT,
     position INTEGER,
     idempotency_key TEXT,
     FOREIGN KEY (parent_id) REFERENCES tasks(id)
@@ -85,6 +86,10 @@ async def get_db() -> aiosqlite.Connection:
             (
                 "idempotency_key",
                 "ALTER TABLE tasks ADD COLUMN idempotency_key TEXT",
+            ),
+            (
+                "context_summary",
+                "ALTER TABLE tasks ADD COLUMN context_summary TEXT",
             ),
         ]:
             try:
@@ -158,6 +163,7 @@ def _row_to_task(row: aiosqlite.Row) -> Task:
         started_at=row["started_at"],
         completed_at=row["completed_at"],
         agent_output=row["agent_output"],
+        context_summary=row["context_summary"],
         position=row["position"],
         idempotency_key=row["idempotency_key"],
     )
@@ -281,6 +287,7 @@ async def update_task(task_id: str, **fields) -> Task:
         "started_at",
         "completed_at",
         "agent_output",
+        "context_summary",
         "position",
     }
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
@@ -313,6 +320,7 @@ async def reset_task(task_id: str) -> None:
             started_at = NULL,
             completed_at = NULL,
             agent_output = NULL,
+            context_summary = NULL,
             verification_result = NULL
            WHERE id = ?""",
         (TaskStatus.PENDING.value, task_id),

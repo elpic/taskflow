@@ -24,6 +24,7 @@ class Task:
     started_at: str | None
     completed_at: str | None
     agent_output: str | None = None
+    context_summary: str | None = None
     position: int | None = None
     idempotency_key: str | None = None
     children: list["Task"] = field(default_factory=list)

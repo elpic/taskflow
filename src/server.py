@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 
 from . import db
 from .analytics import agent_performance, step_bottlenecks, velocity, workflow_summary
+from .hooks import get_hook_manager, init_hooks
 from .models import TaskStatus
 from .tree import render_subtree, render_tree
 from .verification import (
@@ -22,6 +23,9 @@ from .workflows import WORKFLOWS, get_workflow, set_custom_workflows_dir
 set_custom_workflows_dir(Path.cwd() / ".taskflow" / "workflows")
 
 mcp = FastMCP("taskflow")
+
+# Initialize hooks
+init_hooks(Path.cwd() / ".taskflow" / "hooks.json")
 
 
 @mcp.tool()
@@ -220,6 +224,18 @@ async def task_complete(
         if output:
             details["output_snippet"] = output[:200]
         await db.log_event(task_id, "completed", details or None)
+        # Fire hooks
+        hooks = get_hook_manager()
+        await hooks.fire("on_task_complete", task_id, task.name, "done")
+        # Check if this completes a workflow (all siblings of parent are done)
+        if task.parent_id:
+            parent = await db.get_task(task.parent_id)
+            if parent and parent.parent_id is None:  # Parent is a root task
+                siblings = await db.get_children(task.parent_id)
+                if all(s.status == TaskStatus.DONE for s in siblings):
+                    await hooks.fire(
+                        "on_workflow_complete", task.parent_id, parent.name, "done"
+                    )
         return await _append_unblocked(task_id, "ok")
 
     try:
@@ -235,6 +251,18 @@ async def task_complete(
         if output:
             complete_details["output_snippet"] = output[:200]
         await db.log_event(task_id, "completed", complete_details or None)
+        # Fire hooks
+        hooks = get_hook_manager()
+        await hooks.fire("on_task_complete", task_id, task.name, "done")
+        # Check if this completes a workflow (all siblings of parent are done)
+        if task.parent_id:
+            parent = await db.get_task(task.parent_id)
+            if parent and parent.parent_id is None:  # Parent is a root task
+                siblings = await db.get_children(task.parent_id)
+                if all(s.status == TaskStatus.DONE for s in siblings):
+                    await hooks.fire(
+                        "on_workflow_complete", task.parent_id, parent.name, "done"
+                    )
         return await _append_unblocked(task_id, "ok")
     return "ok"
 
@@ -268,6 +296,8 @@ async def task_fail(task_id: str, reason: str) -> str:
 
     await db.update_task(task_id, **compute_fail_fields(reason))
     await db.log_event(task_id, "failed", {"reason": reason})
+    hooks = get_hook_manager()
+    await hooks.fire("on_task_fail", task_id, task.name, "failed")
     return "ok"
 
 

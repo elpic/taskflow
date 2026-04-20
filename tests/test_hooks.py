@@ -221,6 +221,7 @@ class TestHookIntegrationTaskComplete:
 
             # Give the shell command a brief moment via import asyncio
             import asyncio
+
             await asyncio.sleep(0.1)
 
             assert marker.exists(), "on_task_complete hook did not create marker file"
@@ -248,6 +249,7 @@ class TestHookIntegrationTaskFail:
             assert result == "ok", f"task_fail returned: {result}"
 
             import asyncio
+
             await asyncio.sleep(0.1)
 
             assert marker.exists(), "on_task_fail hook did not create marker file"
@@ -286,6 +288,7 @@ class TestHookIntegrationWorkflowComplete:
             assert result == "ok", f"task_complete returned: {result}"
 
             import asyncio
+
             await asyncio.sleep(0.1)
 
             # The marker should exist because either on_task_complete or

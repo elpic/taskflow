@@ -184,17 +184,13 @@ class TestParseWorkflowFile:
 
     def test_raises_when_description_not_string(self, tmp_path: Path):
         path = tmp_path / "bad.yaml"
-        path.write_text(
-            "name: mywf\nsteps:\n  - name: Step\n    description: 42\n"
-        )
+        path.write_text("name: mywf\nsteps:\n  - name: Step\n    description: 42\n")
         with pytest.raises(ValueError, match="'description' must be a string"):
             _parse_workflow_file(path)
 
     def test_returns_name_and_steps(self, tmp_path: Path):
         path = tmp_path / "ok.yaml"
-        path.write_text(
-            "name: mywf\nsteps:\n  - name: Step\n    description: Desc\n"
-        )
+        path.write_text("name: mywf\nsteps:\n  - name: Step\n    description: Desc\n")
         name, steps = _parse_workflow_file(path)
         assert name == "mywf"
         assert len(steps) == 1

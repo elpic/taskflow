@@ -585,6 +585,13 @@ async def get_task_history(
     ]
 
 
+async def has_tasks() -> bool:
+    """Return True if at least one task exists."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT 1 FROM tasks LIMIT 1")
+    return await cursor.fetchone() is not None
+
+
 async def get_all_descendants(root_id: str) -> list[Task]:
     """Return all tasks in the subtree under root_id (not including root itself).
 

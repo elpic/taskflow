@@ -21,11 +21,14 @@ Use only when the user explicitly requests it:
 - Pause after architect designs to confirm direction
 - Accept agent recommendations by default but inform the user of key decisions
 
-## When to Use Taskflow
+## When to Use Taskflow (AUTO-ACTIVATE)
 
-**USE taskflow** for work that requires planning, implementation, or multi-step execution:
+When the user asks to implement, build, fix, refactor, or create something that requires 2+ steps, **automatically invoke the `taskflow:orchestrate` skill** — the user does NOT need to prefix with `/taskflow:orchestrate`.
+
+**AUTO-ACTIVATE for**:
 - Implementing features or writing code
 - Bug fixes, refactoring, research with deliverables
+- Product/sprint planning and execution
 - Any task with 2+ distinct steps
 
 **DO NOT use taskflow** — just respond directly:

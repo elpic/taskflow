@@ -70,8 +70,10 @@ async def task_create(
 
         if task_type:
             steps = get_workflow(task_type)
-            step_info = []
-            prev_step_id: str | None = None
+            step_info: list[str] = []
+            name_to_id: dict[str, str] = {}
+
+            # First pass: create all step tasks
             for step in steps:
                 step_task = await db.create_task(
                     name=step.name,
@@ -80,12 +82,31 @@ async def task_create(
                     verification_criteria=step.verification_criteria,
                     metadata={"agent": step.agent or "self"},
                 )
-                # Auto-chain: each step is blocked by the previous step
-                if prev_step_id is not None:
-                    await db.add_dependencies(step_task.id, [prev_step_id])
+                name_to_id[step.name] = step_task.id
                 agent_tag = f"@{step.agent}" if step.agent else "@self"
                 step_info.append(f"{step_task.id}:{agent_tag}")
-                prev_step_id = step_task.id
+
+            # Second pass: wire dependencies
+            for i, step in enumerate(steps):
+                step_id = name_to_id[step.name]
+                if step.depends_on is not None:
+                    # Explicit dependencies from depends_on
+                    if step.depends_on:
+                        dep_ids = []
+                        for dep_name in step.depends_on:
+                            if dep_name not in name_to_id:
+                                await db.delete_task(task.id)
+                                return (
+                                    f"error:workflow '{task_type}' step '{step.name}'"
+                                    f" depends_on unknown step '{dep_name}'"
+                                )
+                            dep_ids.append(name_to_id[dep_name])
+                        await db.add_dependencies(step_id, dep_ids)
+                else:
+                    # None = fallback to linear chain (depends on previous step)
+                    if i > 0:
+                        prev_id = name_to_id[steps[i - 1].name]
+                        await db.add_dependencies(step_id, [prev_id])
 
             return f"{task.id}|{task_type}|{','.join(step_info)}"
 

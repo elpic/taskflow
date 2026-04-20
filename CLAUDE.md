@@ -31,6 +31,10 @@ Use only when the user explicitly requests it:
 **DO NOT use taskflow** — just respond directly:
 - Questions, explanations, simple one-shot edits, conversations
 
+## Latest Docs (BEFORE implementing)
+
+Before writing code that uses any library, framework, or external tool, look up the latest documentation via `context7` (resolve-library-id → query-docs). Training data may be outdated. This applies to ALL agents — architect, developer, QA, devops.
+
 ## Task Types & Agent Delegation
 
 When creating a task with `task_type`, the server auto-generates workflow subtasks with **specialist agent assignments**.

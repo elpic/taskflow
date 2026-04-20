@@ -1,76 +1,83 @@
 # Taskflow
 
-Hierarchical task orchestration plugin for [Claude Code](https://claude.com/claude-code) with agent delegation, continuous delivery, and verification.
+Task orchestration plugin for [Claude Code](https://claude.com/claude-code). Turns Claude into a full development team with specialist agents, structured workflows, and continuous delivery.
 
-## Installation
+## Quick Start
 
-Inside Claude Code, run:
-
-```
+```bash
+# Install the plugin
 /plugin marketplace add elpic/taskflow
 /plugin install taskflow@elpic-taskflow
 ```
 
-Verify with:
+Then just tell Claude what to build:
 
-```bash
-claude plugins list
+```
+implement a REST API for user management
+build a todo app with authentication
+fix the login bug in auth.py
+refactor the database layer
 ```
 
-You should see `taskflow@elpic-taskflow` with status `✔ enabled`.
+Taskflow runs **autonomously by default** — no flags needed. It breaks down your request, delegates to specialist agents, writes tests, reviews code, and ships via PR.
 
-<details>
-<summary>Manual installation (alternative)</summary>
+## How It Works
 
-Add to your `~/.claude/settings.json`:
-
-```json
-{
-  "extraKnownMarketplaces": {
-    "elpic-taskflow": {
-      "source": {
-        "source": "git",
-        "url": "https://github.com/elpic/taskflow.git"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "taskflow@elpic-taskflow": true
-  }
-}
+```
+You: "implement a REST API"
+                ↓
+    Taskflow creates workflow steps
+                ↓
+    @tech-architect designs the solution
+                ↓
+    @developer implements following the design
+                ↓
+    @qa-engineer writes tests
+                ↓
+    @code-reviewer reviews everything
+                ↓
+    Branch → Commit → PR → CI → Merge
 ```
 
-Then restart Claude Code.
+Each agent receives context from the previous step. The reviewer can loop back to the developer if issues are found (max 3 iterations).
 
-</details>
+## Workflow Types
 
-### Permissions for Autonomous Mode
+| Command | What happens |
+|---------|-------------|
+| `implement X` | Design → Implement → Test → Review |
+| `fix the bug in X` | Reproduce → Root cause → Fix → Verify → Review |
+| `refactor X` | Plan → Implement → Verify unchanged → Review |
+| `research X` | Define question → Explore → Evaluate → Recommend |
+| `build a product` | Vision → Features → Prioritize → Ship all features |
+| `sprint` | Pick up backlog → Prioritize → Ship → Retrospective |
+| `discover this project` | Scan everything → Generate project profile |
+| `setup a new project` | Init → Code quality → Tests → CI/CD → Docker |
 
-For `--auto` mode to run without prompting, add these permissions to your project's `.claude/settings.local.json`:
+## MCP Tools (21)
+
+| Category | Tools |
+|----------|-------|
+| **CRUD** | `task_create`, `task_get`, `task_update`, `task_delete`, `task_reset` |
+| **Lifecycle** | `task_start`, `task_complete`, `task_fail` |
+| **Query** | `task_list`, `task_search`, `task_current` |
+| **Organization** | `task_move`, `task_reorder` |
+| **Session** | `task_resume`, `task_context`, `task_history` |
+| **Orchestration** | `task_next` (server-side step enforcement) |
+| **Analytics** | `task_stats` |
+| **Meta** | `task_types` |
+
+Key features: idempotent creation, blocked_by dependencies with cycle detection, agent output storage, audit trail, session recovery, position-based ordering.
+
+## Permissions
+
+Add to your project's `.claude/settings.local.json`:
 
 ```json
 {
   "permissions": {
     "allow": [
-      "Bash(python3*)",
-      "Bash(python*)",
-      "Bash(uv *)",
-      "Bash(cd *)",
-      "Bash(ls*)",
-      "Bash(cat *)",
-      "Bash(test *)",
-      "Bash(echo *)",
-      "Bash(grep *)",
-      "Bash(mkdir *)",
-      "Bash(rm *)",
-      "Bash(gh *)",
-      "Bash(git *)",
-      "Bash(docker *)",
-      "Bash(node *)",
-      "Bash(pnpm *)",
-      "Bash(npm *)",
-      "Bash(cargo *)",
-      "Bash(go *)",
+      "Bash(*)",
       "Read(*)",
       "Write(*)",
       "Edit(*)",
@@ -82,161 +89,35 @@ For `--auto` mode to run without prompting, add these permissions to your projec
 }
 ```
 
-Without these, Claude Code will prompt for permission on every shell command and file operation, breaking the autonomous flow.
-
-### Requirements
-
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/) package manager
-
-## Development
-
-### Prerequisites
-
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/) package manager
-
-### Setup
-
-```bash
-uv sync
-```
-
-### Commands
-
-| Command | Description |
-|---------|-------------|
-| `uv run ruff check .` | Lint |
-| `uv run ruff format .` | Format |
-| `uv run ty check` | Type check |
-| `uv run pytest` | Run tests |
-| `uv run pytest --cov=src` | Run tests with coverage |
-| `uv build` | Build wheel |
-
-### Docker
-
-```bash
-docker build -t taskflow .
-docker run -v $(pwd)/data:/app/data taskflow
-```
-
-### Integration
-
-GitHub Actions runs lint, format check, type check, tests, and build on pull requests targeting `main`.
-
-## What it does
-
-Taskflow turns Claude Code into a full development team. When you give it a task, it:
-
-1. **Breaks it down** into a structured workflow with specialist agents
-2. **Delegates** each step to the right agent (architect, developer, QA, reviewer)
-3. **Verifies** each step before moving on
-4. **Learns** from past work via MemPalace integration
-5. **Ships** via git workflow (branch, PR, CI, squash merge)
-
-## Usage
-
-```
-implement a REST API in python          # interactive mode
-implement a REST API in python --auto   # fully autonomous
-build a todo app --auto                 # product mode — creates backlog, implements all features
-discover this project --auto            # detect tools, patterns, CI/CD
-```
-
-### Commands
-
-- `--auto` / `/auto` — run fully autonomous, no human in the loop
-- `/stop` — stop the continuous delivery loop after current ticket finishes
-
-## Workflow Types
-
-| Type | Description |
-|------|-------------|
-| `simple` | Plan, execute, verify |
-| `implement` | Full pipeline: design, implement, test, docs, containerize, review |
-| `bugfix` | Reproduce, root cause, fix, verify, review |
-| `refactor` | Analyze, implement, verify behavior unchanged, review |
-| `research` | Define question, explore, evaluate, recommend |
-| `secure-implement` | Like implement but with security review |
-| `product` | Define vision, create backlog, prioritize, execute all features |
-| `sprint` | Pick up existing backlog, prioritize, execute, retrospective |
-| `discover` | Analyze existing project, detect tools/patterns, improve CI/CD |
-| `setup` | Initialize new project with full tooling and CI/CD |
-
-## Agent Pipeline
-
-Each workflow delegates steps to specialist agents:
-
-| Agent | Role |
-|-------|------|
-| `@tech-architect` | Design, architecture decisions, acceptance criteria |
-| `@developer` | Implementation, documentation |
-| `@qa-engineer` | Testing, verification |
-| `@code-reviewer` | Code quality, correctness, security |
-| `@devops-engineer` | CI/CD, containerization |
-| `@security-reviewer` | Security audit |
-| `@product-manager` | Vision, backlog, prioritization |
-| `@architecture-reviewer` | Tech debt review between tickets |
-| `@git-workflow` | Branch management, safe git hygiene |
-| `@integration-verifier` | CI monitoring, failure reporting |
-
-## Autonomous Mode
-
-With `--auto`, taskflow runs end-to-end without stopping:
-
-- Skips clarifying questions
-- Accepts all agent recommendations
-- Auto-fixes issues found in review (loops until passing)
-- Runs full git workflow per ticket (branch, PR, CI, squash merge)
-- Reviews for tech debt between tickets
-- Creates backlog items for issues found
-- Continues until backlog is empty or `/stop`
-
-## Continuous Delivery Loop
-
-For `product` and `sprint` with `--auto`:
-
-```
-Pick ticket → Branch → Implement → Commit → PR → CI → Squash Merge → Tech Debt Review → Next
-```
-
 ## Project Discovery
 
-Run `discover` on an existing project to generate `.taskflow/project.json`:
+Run `discover this project` to generate `.taskflow/project.json` — a profile of your project's tools, architecture, and conventions. All agents read this before working.
 
 ```json
 {
-  "name": "my-api",
   "languages": { "primary": "python", "versions": { "python": ">=3.12" } },
-  "package_manager": { "tool": "uv", "add_command": "uv add" },
+  "package_manager": { "tool": "uv" },
   "linter": { "tool": "ruff", "command": "uv run ruff check ." },
-  "test_runner": { "tool": "pytest", "command": "uv run pytest" },
-  "architecture": { "style": "hexagonal", "patterns": ["repository"] }
+  "architecture": { "style": "hexagonal", "patterns": ["repository", "ports-adapters"] }
 }
 ```
 
-All agents read this profile before working, ensuring they use the project's actual tools.
+## Development
 
-## Language Standards
+```bash
+uv sync                          # Install dependencies
+uv run ruff check .              # Lint
+uv run ruff format .             # Format
+uv run ty check                  # Type check
+uv run pytest                    # Run 216 tests
+uv run pytest --cov=src          # Coverage
+uv build                         # Build wheel
+```
 
-Built-in standards for Python, TypeScript, Rust, and Go. Used as fallback when no project profile exists.
+## Requirements
 
-| Language | Package Manager | Linter | Type Checker | Test Runner |
-|----------|----------------|--------|-------------|-------------|
-| Python | uv | ruff | ty | pytest |
-| TypeScript | pnpm | biome | tsc | vitest |
-| Rust | cargo | clippy | rustc | cargo test |
-| Go | go mod | golangci-lint | go vet | go test |
-
-## MCP Server
-
-SQLite-backed task persistence with tools:
-
-- `task_create` — create tasks with optional workflow type
-- `task_start` — start a task
-- `task_complete` — complete with auto-verification
-- `task_fail` — mark failed
-- `task_types` — list available workflow types
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/)
 
 ## License
 

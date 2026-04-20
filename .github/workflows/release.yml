@@ -111,6 +111,16 @@ jobs:
               json.dump(data, f, indent=2)
               f.write('\n')
           "
+          python3 -c "
+          import json
+          with open('.claude-plugin/marketplace.json') as f:
+              data = json.load(f)
+          assert data.get('plugins'), 'marketplace.json: plugins array is empty'
+          data['plugins'][0]['version'] = '${NEXT}'
+          with open('.claude-plugin/marketplace.json', 'w') as f:
+              json.dump(data, f, indent=2)
+              f.write('\n')
+          "
 
       - name: Create version-sync PR
         id: version-pr

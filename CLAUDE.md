@@ -2,20 +2,21 @@
 
 Taskflow (MCP) is the persistence layer. Native TaskCreate/TaskUpdate are the UI layer.
 
-## Autonomous Mode
+## Autonomous Mode (DEFAULT)
 
-When the user's prompt contains `--auto` or `/auto`, run in **fully autonomous mode**:
+Taskflow runs in **fully autonomous mode by default**:
 
-1. **Skip clarifying questions entirely** — make reasonable assumptions based on context and mempalace knowledge
+1. **Skip clarifying questions** — make reasonable assumptions based on context and mempalace knowledge
 2. **Accept all agent recommendations** — do not pause for user confirmation at any step
 3. **Run end-to-end without stopping** — design → implement → test → review, no human in the loop
-4. **Handle review feedback automatically** — if the code reviewer or QA finds issues, loop back to the developer agent to fix them, then re-test and re-review. Keep looping until it passes
+4. **Handle review feedback automatically** — if review/QA finds issues, loop back to fix, re-test, re-review until it passes
 5. **Only stop for the user if**:
    - A task fails after 3 retry attempts
    - The request is fundamentally ambiguous (e.g., "build something cool" with no context)
-6. **Report at the end** — when all tasks complete, give a brief summary of what was built, decisions made, and any issues encountered
+6. **Report at the end** — brief summary of what was built, decisions made, and issues encountered
 
-### Without `--auto`:
+### Interactive mode (`--interactive` or `/interactive`):
+Use only when the user explicitly requests it:
 - Ask clarifying questions when requirements are ambiguous
 - Pause after architect designs to confirm direction
 - Accept agent recommendations by default but inform the user of key decisions

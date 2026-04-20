@@ -45,11 +45,11 @@ When creating a task with `task_type`, the server auto-generates workflow subtas
 | Type | Workflow (agent) |
 |------|-----------------|
 | **simple** | Plan → Execute (@developer) → Verify (@qa-engineer) |
-| **implement** | Design (@tech-architect) → Clarify → Acceptance criteria (@tech-architect) → Implement (@developer) → Tests (@qa-engineer) → Docs (@developer) → Containerize (@devops-engineer) → Review (@code-reviewer) |
-| **bugfix** | Reproduce (@qa-engineer) → Root cause (@developer) → Fix (@developer) → Verify fix (@qa-engineer) → Review (@code-reviewer) |
-| **refactor** | Plan (@tech-architect) → Implement (@developer) → Verify unchanged (@qa-engineer) → Review (@code-reviewer) |
+| **implement** | Branch (@git-workflow) → Design (@tech-architect) → Clarify → Acceptance criteria (@tech-architect) → Implement (@developer) → Tests (@qa-engineer) → Docs (@developer) → Containerize (@devops-engineer) → Review (@code-reviewer) → PR (@git-workflow) |
+| **bugfix** | Branch (@git-workflow) → Reproduce (@qa-engineer) → Root cause (@developer) → Fix (@developer) → Verify fix (@qa-engineer) → Review (@code-reviewer) → PR (@git-workflow) |
+| **refactor** | Branch (@git-workflow) → Plan (@tech-architect) → Implement (@developer) → Verify unchanged (@qa-engineer) → Review (@code-reviewer) → PR (@git-workflow) |
 | **research** | Define question → Explore (@tech-architect) → Evaluate (@tech-architect) → Document recommendation |
-| **secure-implement** | Design (@tech-architect) → Clarify → Criteria (@tech-architect) → Implement (@developer) → Tests (@qa-engineer) → Security (@security-reviewer) → Review (@code-reviewer) |
+| **secure-implement** | Branch (@git-workflow) → Design (@tech-architect) → Clarify → Criteria (@tech-architect) → Implement (@developer) → Tests (@qa-engineer) → Security (@security-reviewer) → Review (@code-reviewer) → PR (@git-workflow) |
 | **product** | Vision (@product-manager) → Features (@product-manager) → Prioritize (@product-manager) → Execute backlog (continuous delivery loop) |
 | **discover** | Scan (@Explore) → Languages (@Explore) → Packages (@Explore) → Quality tools (@Explore) → Tests (@Explore) → Architecture (@tech-architect) → Conventions (@code-reviewer) → CI/CD (@devops-engineer) → APIs (@tech-architect) → Review CI/CD (@devops-reviewer) → Improve CI/CD (@devops-engineer) → Generate profile (@developer) → Review (@code-reviewer) |
 | **setup** | Define scope (@tech-architect) → Init project (@developer) → Code quality (@developer) → Testing (@qa-engineer) → CI/CD pipeline (@devops-engineer) → Containerize (@devops-engineer) → Docs (@developer) → Generate profile (@developer) → Review setup (@devops-reviewer) |

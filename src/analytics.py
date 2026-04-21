@@ -207,9 +207,9 @@ async def velocity(days: int = 30) -> str:
     return "\n".join(lines)
 
 
-def _format_duration(seconds: float) -> str:
-    """Format seconds into human-readable duration."""
-    total = int(seconds)
+def _format_duration(value: float | timedelta) -> str:
+    """Format seconds (float) or a timedelta into a human-readable duration."""
+    total = int(value.total_seconds() if isinstance(value, timedelta) else value)
     if total < 60:
         return f"{total}s"
     minutes = total // 60

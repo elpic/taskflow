@@ -44,7 +44,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
     "implement": [
         WorkflowStep(
             name="Create branch",
-            description="Create a feature branch from main. Ensure main is up to date first (git pull origin main). Branch naming: feat/<ticket-slug>",
+            description="[UI] Before starting, create native tasks (TaskCreate) for all steps in this workflow with addBlockedBy chains. Create a feature branch from main. Ensure main is up to date first (git pull origin main). Branch naming: feat/<ticket-slug>",
             agent="git-workflow",
             depends_on=[],
         ),
@@ -102,7 +102,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
         ),
         WorkflowStep(
             name="Commit and create PR",
-            description="Stage all changes, commit with a descriptive conventional commit message, push the branch, and create a pull request with full description including summary, changes, and test results",
+            description="Stage all changes, commit with a descriptive conventional commit message, push the branch, and create a pull request with full description including summary, changes, and test results [UI] After PR is created, delete step-level native tasks and restore ticket-level tasks with updated statuses.",
             verification_criteria="PR created with passing CI checks",
             agent="git-workflow",
             depends_on=["Code review"],
@@ -111,7 +111,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
     "bugfix": [
         WorkflowStep(
             name="Create branch",
-            description="Create a fix branch from main. Ensure main is up to date. Branch naming: fix/<bug-slug>",
+            description="[UI] Before starting, create native tasks (TaskCreate) for all steps in this workflow with addBlockedBy chains. Create a fix branch from main. Ensure main is up to date. Branch naming: fix/<bug-slug>",
             agent="git-workflow",
         ),
         WorkflowStep(
@@ -145,7 +145,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
         ),
         WorkflowStep(
             name="Commit and create PR",
-            description="Stage all changes, commit with a fix: conventional commit message, push the branch, and create a pull request",
+            description="Stage all changes, commit with a fix: conventional commit message, push the branch, and create a pull request [UI] After PR is created, delete step-level native tasks and restore ticket-level tasks with updated statuses.",
             verification_criteria="PR created with passing CI checks",
             agent="git-workflow",
         ),
@@ -153,7 +153,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
     "refactor": [
         WorkflowStep(
             name="Create branch",
-            description="Create a refactor branch from main. Ensure main is up to date. Branch naming: refactor/<scope-slug>",
+            description="[UI] Before starting, create native tasks (TaskCreate) for all steps in this workflow with addBlockedBy chains. Create a refactor branch from main. Ensure main is up to date. Branch naming: refactor/<scope-slug>",
             agent="git-workflow",
         ),
         WorkflowStep(
@@ -181,7 +181,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
         ),
         WorkflowStep(
             name="Commit and create PR",
-            description="Stage all changes, commit with a refactor: conventional commit message, push the branch, and create a pull request",
+            description="Stage all changes, commit with a refactor: conventional commit message, push the branch, and create a pull request [UI] After PR is created, delete step-level native tasks and restore ticket-level tasks with updated statuses.",
             verification_criteria="PR created with passing CI checks",
             agent="git-workflow",
         ),
@@ -210,7 +210,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
     "secure-implement": [
         WorkflowStep(
             name="Create branch",
-            description="Create a feature branch from main. Ensure main is up to date. Branch naming: feat/<ticket-slug>",
+            description="[UI] Before starting, create native tasks (TaskCreate) for all steps in this workflow with addBlockedBy chains. Create a feature branch from main. Ensure main is up to date. Branch naming: feat/<ticket-slug>",
             agent="git-workflow",
             depends_on=[],
         ),
@@ -261,7 +261,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
         ),
         WorkflowStep(
             name="Commit and create PR",
-            description="Stage all changes, commit with a conventional commit message, push the branch, and create a pull request",
+            description="Stage all changes, commit with a conventional commit message, push the branch, and create a pull request [UI] After PR is created, delete step-level native tasks and restore ticket-level tasks with updated statuses.",
             verification_criteria="PR created with passing CI checks",
             agent="git-workflow",
             depends_on=["Code review"],
@@ -270,7 +270,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
     "product": [
         WorkflowStep(
             name="Define product vision",
-            description="Define the product vision, target users, core problem being solved, and high-level goals. Output: vision statement, target persona, core value proposition",
+            description="[UI] Before starting, create native tasks (TaskCreate) for all steps in this workflow with addBlockedBy chains. Define the product vision, target users, core problem being solved, and high-level goals. Output: vision statement, target persona, core value proposition",
             agent="product-manager",
         ),
         WorkflowStep(
@@ -285,13 +285,13 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
         ),
         WorkflowStep(
             name="Execute backlog",
-            description="Work through the prioritized backlog. Each feature already exists as a taskflow task. For each in priority order: create child tasks under it with task_type=implement, then run the full pipeline (architect → developer → QA → docs → containerization → reviewer). Level-switch into each feature, complete it, switch back to backlog",
+            description="[UI] Create one native task per ticket with addBlockedBy chains. Drill down into each ticket during execution. Work through the prioritized backlog. Each feature already exists as a taskflow task. For each in priority order: create child tasks under it with task_type=implement, then run the full pipeline (architect → developer → QA → docs → containerization → reviewer). Level-switch into each feature, complete it, switch back to backlog",
         ),
     ],
     "discover": [
         WorkflowStep(
             name="Scan project structure",
-            description="Explore the project directory tree. Identify all source directories, config files, and key entry points. Map: root layout (src/, lib/, app/, flat), test directories, config file locations, documentation files, CI/CD configs, container files. Output a complete file tree with annotations",
+            description="[UI] Before starting, create native tasks (TaskCreate) for all steps in this workflow with addBlockedBy chains. Explore the project directory tree. Identify all source directories, config files, and key entry points. Map: root layout (src/, lib/, app/, flat), test directories, config file locations, documentation files, CI/CD configs, container files. Output a complete file tree with annotations",
             agent="Explore",
             depends_on=[],
         ),
@@ -369,7 +369,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
         ),
         WorkflowStep(
             name="Review project profile",
-            description="Review the generated .taskflow/project.json for accuracy and completeness. Cross-check detected tools against actual config files. Verify commands work by running them. Flag any conflicts or ambiguities",
+            description="Review the generated .taskflow/project.json for accuracy and completeness. Cross-check detected tools against actual config files. Verify commands work by running them. Flag any conflicts or ambiguities. [UI] After review completes, delete step-level native tasks and restore ticket-level tasks with updated statuses.",
             verification_criteria="All detected tools verified, commands tested, no conflicts in profile",
             agent="code-reviewer",
             depends_on=["Generate project profile"],
@@ -378,7 +378,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
     "setup": [
         WorkflowStep(
             name="Define project scope",
-            description="Define the project: name, purpose, primary language, target platform. Determine if it's a library, CLI tool, web app, API, or service. Output: project name, type, language, target platform, key requirements",
+            description="[UI] Before starting, create native tasks (TaskCreate) for all steps in this workflow with addBlockedBy chains. Define the project: name, purpose, primary language, target platform. Determine if it's a library, CLI tool, web app, API, or service. Output: project name, type, language, target platform, key requirements",
             agent="tech-architect",
             depends_on=[],
         ),
@@ -438,7 +438,7 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
         ),
         WorkflowStep(
             name="Review setup",
-            description="Review the entire project setup: directory structure, configs, CI/CD, Docker, docs. Verify everything works end-to-end: install deps, run lint, run tests, build container. Flag any issues",
+            description="Review the entire project setup: directory structure, configs, CI/CD, Docker, docs. Verify everything works end-to-end: install deps, run lint, run tests, build container. Flag any issues. [UI] After review completes, delete step-level native tasks and restore ticket-level tasks with updated statuses.",
             verification_criteria="Full dev workflow works: install → lint → test → build → docker build",
             agent="devops-reviewer",
             depends_on=["Generate project profile"],
@@ -457,11 +457,11 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
         ),
         WorkflowStep(
             name="Execute sprint",
-            description="Work through the selected items in priority order. For each item, create child tasks with task_type=implement and run the full pipeline. Track velocity and report at the end",
+            description="[UI] Create one native task per ticket with addBlockedBy chains. Drill down into each ticket during execution. Work through the selected items in priority order. For each item, create child tasks with task_type=implement and run the full pipeline. Track velocity and report at the end",
         ),
         WorkflowStep(
             name="Sprint retrospective",
-            description="Review what was completed, what was blocked, what was learned. Store learnings in mempalace. Update backlog with any new items discovered during the sprint",
+            description="Review what was completed, what was blocked, what was learned. Store learnings in mempalace. Update backlog with any new items discovered during the sprint. [UI] After sprint completes, delete step-level native tasks and restore ticket-level tasks with updated statuses.",
             agent="product-manager",
         ),
     ],

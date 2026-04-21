@@ -567,6 +567,19 @@ class TestTaskDependencies:
         second_step_details = await task_get(second_step_id)
         assert "Blocked by:" in second_step_details
 
+    async def test_invalid_task_type_returns_error(self):
+        result = await task_create("My Task", task_type="implment")
+        assert result.startswith("error:")
+        assert "implment" in result
+        assert "Valid types:" in result
+
+    async def test_invalid_task_type_does_not_create_root_task(self):
+        # Ensure no orphaned root task is left in the DB when task_type is invalid
+        result = await task_create("Ghost Task", task_type="typo_type")
+        assert result.startswith("error:")
+        all_tasks = await task_list()
+        assert "Ghost Task" not in all_tasks
+
 
 class TestTaskStats:
     async def test_stats_not_found(self):

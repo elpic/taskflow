@@ -6,6 +6,12 @@ from pathlib import Path
 
 import aiosqlite
 
+from .migrations import (
+    LATEST_VERSION,
+    apply_pending_migrations,
+    get_current_version,
+    stamp_version,
+)
 from .models import Task, TaskStatus
 
 DB_PATH = Path(__file__).parent.parent / "data" / "taskflow.db"
@@ -32,6 +38,8 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key
+    ON tasks(idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS current_task (
     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -59,11 +67,25 @@ CREATE TABLE IF NOT EXISTS task_events (
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id);
+
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER NOT NULL,
+    applied_at TEXT NOT NULL
+);
 """
 
 
 _db: aiosqlite.Connection | None = None
 _init_lock = asyncio.Lock()
+
+
+async def _table_exists(db: aiosqlite.Connection, table_name: str) -> bool:
+    """Check if a table exists in the database."""
+    cursor = await db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    )
+    return await cursor.fetchone() is not None
 
 
 async def get_db() -> aiosqlite.Connection:
@@ -78,66 +100,28 @@ async def get_db() -> aiosqlite.Connection:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA foreign_keys=ON")
         db.row_factory = aiosqlite.Row
-        await db.executescript(SCHEMA)
-        # Migrations: add columns if missing
-        for col, sql in [
-            ("agent_output", "ALTER TABLE tasks ADD COLUMN agent_output TEXT"),
-            ("position", "ALTER TABLE tasks ADD COLUMN position INTEGER"),
-            (
-                "idempotency_key",
-                "ALTER TABLE tasks ADD COLUMN idempotency_key TEXT",
-            ),
-            (
-                "context_summary",
-                "ALTER TABLE tasks ADD COLUMN context_summary TEXT",
-            ),
-        ]:
-            try:
-                await db.execute(f"SELECT {col} FROM tasks LIMIT 0")
-            except Exception:
-                await db.execute(sql)
-        await db.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key"
-            " ON tasks(idempotency_key)"
-        )
-        # Migration: add task_dependencies table if missing
-        try:
-            await db.execute("SELECT 1 FROM task_dependencies LIMIT 0")
-        except Exception:
-            await db.execute(
-                """CREATE TABLE IF NOT EXISTS task_dependencies (
-                    task_id TEXT NOT NULL,
-                    blocked_by_id TEXT NOT NULL,
-                    PRIMARY KEY (task_id, blocked_by_id),
-                    FOREIGN KEY (task_id) REFERENCES tasks(id)
-                        ON DELETE CASCADE,
-                    FOREIGN KEY (blocked_by_id) REFERENCES tasks(id)
-                        ON DELETE CASCADE
-                )"""
-            )
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_deps_blocked_by"
-                " ON task_dependencies(blocked_by_id)"
-            )
-        # Migration: add task_events table if missing
-        try:
-            await db.execute("SELECT 1 FROM task_events LIMIT 0")
-        except Exception:
-            await db.execute(
-                """CREATE TABLE IF NOT EXISTS task_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    task_id TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    details TEXT DEFAULT '{}',
-                    FOREIGN KEY (task_id) REFERENCES tasks(id)
-                        ON DELETE CASCADE
-                )"""
-            )
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id)"
-            )
-        await db.commit()
+        version = await get_current_version(db)
+
+        if version is None:
+            # No schema_version table exists
+            has_tasks = await _table_exists(db, "tasks")
+            if not has_tasks:
+                # Fresh install: run full schema DDL, stamp latest version
+                await db.executescript(SCHEMA)
+                await stamp_version(db, LATEST_VERSION)
+                await db.commit()
+            else:
+                # Pre-migration existing DB: enroll and migrate
+                await db.execute(
+                    "CREATE TABLE IF NOT EXISTS schema_version"
+                    " (version INTEGER NOT NULL, applied_at TEXT NOT NULL)"
+                )
+                await stamp_version(db, 0)
+                await db.commit()
+                await apply_pending_migrations(db)
+        else:
+            # Already enrolled: apply pending migrations
+            await apply_pending_migrations(db)
         _db = db
         return _db
 
@@ -583,6 +567,13 @@ async def get_task_history(
         }
         for row in rows
     ]
+
+
+async def has_tasks() -> bool:
+    """Return True if at least one task exists."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT 1 FROM tasks LIMIT 1")
+    return await cursor.fetchone() is not None
 
 
 async def get_all_descendants(root_id: str) -> list[Task]:

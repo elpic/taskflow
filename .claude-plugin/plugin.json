@@ -1,6 +1,6 @@
 {
   "name": "taskflow",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Hierarchical task orchestration with agent delegation, continuous delivery, and verification",
   "author": {
     "name": "elpic"

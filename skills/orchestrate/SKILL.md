@@ -37,9 +37,61 @@ Taskflow runs autonomously by default. No `--auto` flag needed. Skip clarifying 
 
 Use `--interactive` only when user explicitly requests it.
 
-## Continuous Delivery (product/sprint)
+## Continuous Delivery Loop (product/sprint)
 
-Enters a loop: pick ticket → branch → implement → commit → PR → CI → squash merge → next ticket.
+The CD loop is the core automation pattern. Follow this EXACTLY — do not skip steps.
+
+```
+# Phase 1: Create ticket-level tasks (see Claude UI Phase 1)
+for each ticket in backlog:
+    TaskCreate(subject="Ticket N: <name>") with addBlockedBy chains
+
+# Phase 2: Process each ticket
+while tickets_remaining:
+    # 2a. Pick next ticket
+    result = task_next(root_id=sprint_id)  # returns next ready ticket
+    ticket_id = result.step_id
+
+    # 2b. Drill down (see Claude UI Phase 2)
+    #     Delete current ticket's native task
+    #     Create step-level native tasks for each workflow step
+    #     Chain with addBlockedBy
+
+    # 2c. Execute ALL steps (branch, design, implement, test, review, PR)
+    #     task_next returns steps in order — including git steps
+    while step = task_next(root_id=ticket_id):
+        # Update Claude UI
+        TaskUpdate(taskId=step_native, status="in_progress",
+                   activeForm=step.step_name)
+
+        # Delegate to the assigned agent with full context
+        # step.context contains prior step outputs from task_next
+        Agent(subagent_type=step.agent,
+              prompt=step.context + project_profile + step.description)
+
+        # Store output for downstream agents and mark done
+        task_complete(step_id=step.id, output=agent_result)
+        TaskUpdate(taskId=step_native, status="completed")
+
+    # 2d. Merge PR (last step created the PR)
+    Agent(subagent_type="git-workflow",
+          prompt="Squash merge PR #N, pull main, delete branch")
+
+    # 2e. Wait for release + merge version-sync PR (if exists)
+    #     Check: gh pr list --state open | grep "sync version"
+    #     If found: gh pr merge <N> --squash --delete-branch
+
+    # 2f. Drill back up (see Claude UI Phase 4)
+    #     Delete step tasks, recreate ticket task as completed
+
+    # 2g. Complete the ticket in taskflow
+    task_complete(step_id=ticket_id)
+```
+
+**Key rules:**
+- NEVER skip the drill-down (2b) or drill-back-up (2h) — the user must see progress
+- ALWAYS wait for merge + release before starting the next ticket
+- ALWAYS pass context from prior steps to each agent (`task_next` provides this)
 
 ## Skip taskflow for simple questions, explanations, or one-shot edits.
 

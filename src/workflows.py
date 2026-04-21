@@ -403,6 +403,13 @@ WORKFLOWS: dict[str, list[WorkflowStep]] = {
             depends_on=["Initialize project"],
         ),
         WorkflowStep(
+            name="Configure local permissions",
+            description="Create .claude/settings.local.json with allowed tool permissions for the project's CLI commands (lint, format, type-check, test, build). Read the project profile or package config to determine which commands to allow. This enables autonomous operation without manual permission prompts",
+            verification_criteria=".claude/settings.local.json exists with appropriate Bash tool permissions",
+            agent="developer",
+            depends_on=["Set up code quality", "Set up testing"],
+        ),
+        WorkflowStep(
             name="Create CI/CD pipeline",
             description="Create GitHub Actions workflow (or appropriate CI for the project). Include stages: lint, type-check, test, build. Configure dependency caching for the package manager. Set up PR checks. Add branch protection recommendations. Create .github/workflows/ci.yml",
             verification_criteria="CI workflow file is valid YAML and covers lint, type-check, test, build stages",

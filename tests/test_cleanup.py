@@ -336,6 +336,7 @@ class TestCascadeDeletion:
                 (tid,),
             )
             row = await cursor.fetchone()
+            assert row is not None
             assert row["cnt"] == 0, f"Stale events found for task {tid}"
 
     async def test_dependencies_cascade_deleted(self):
@@ -359,6 +360,7 @@ class TestCascadeDeletion:
             (step2,),
         )
         row = await cursor.fetchone()
+        assert row is not None
         assert row["cnt"] == 0
 
 

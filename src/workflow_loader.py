@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -59,11 +60,12 @@ def _parse_workflow_file(path: Path) -> tuple[str, list[WorkflowStep]]:
         if not isinstance(step_data, dict):
             raise ValueError(f"Step {i} must be a mapping")
 
-        step_name = step_data.get("name")
+        step_data_str: dict[str, Any] = cast(dict[str, Any], step_data)
+        step_name = step_data_str.get("name")
         if not step_name or not isinstance(step_name, str):
             raise ValueError(f"Step {i}: 'name' is required")
 
-        description = step_data.get("description", "")
+        description = step_data_str.get("description", "")
         if not isinstance(description, str):
             raise ValueError(f"Step '{step_name}': 'description' must be a string")
 
@@ -71,8 +73,8 @@ def _parse_workflow_file(path: Path) -> tuple[str, list[WorkflowStep]]:
             WorkflowStep(
                 name=step_name,
                 description=description,
-                verification_criteria=step_data.get("verification_criteria"),
-                agent=step_data.get("agent"),
+                verification_criteria=step_data_str.get("verification_criteria"),
+                agent=step_data_str.get("agent"),
             )
         )
 

@@ -31,7 +31,7 @@ async def workflow_summary(days: int = 30) -> str:
         """,
         (cutoff,),
     )
-    rows = await cursor.fetchall()
+    rows = list(await cursor.fetchall())
 
     if not rows:
         return "No data for the specified period."

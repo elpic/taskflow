@@ -119,7 +119,7 @@ class TestStampVersion:
             await db.commit()
 
             cursor = await db.execute("SELECT version FROM schema_version")
-            rows = await cursor.fetchall()
+            rows = list(await cursor.fetchall())
             assert len(rows) == 1
             assert rows[0][0] == 1
         finally:
@@ -150,6 +150,7 @@ class TestStampVersion:
 
             cursor = await db.execute("SELECT COUNT(*) FROM schema_version")
             row = await cursor.fetchone()
+            assert row is not None
             assert row[0] == 2
         finally:
             await db.close()
@@ -293,12 +294,16 @@ class TestApplyPendingMigrations:
             await db.commit()
 
             cursor = await db.execute("SELECT COUNT(*) FROM schema_version")
-            count_before = (await cursor.fetchone())[0]
+            row_before = await cursor.fetchone()
+            assert row_before is not None
+            count_before = row_before[0]
 
             await apply_pending_migrations(db)
 
             cursor = await db.execute("SELECT COUNT(*) FROM schema_version")
-            count_after = (await cursor.fetchone())[0]
+            row_after = await cursor.fetchone()
+            assert row_after is not None
+            count_after = row_after[0]
 
             assert count_after == count_before
         finally:
@@ -471,5 +476,7 @@ class TestGetDbAlreadyEnrolled:
     async def test_no_extra_stamps_added(self):
         db = await get_db()
         cursor = await db.execute("SELECT COUNT(*) FROM schema_version")
-        count = (await cursor.fetchone())[0]
+        row = await cursor.fetchone()
+        assert row is not None
+        count = row[0]
         assert count == 1

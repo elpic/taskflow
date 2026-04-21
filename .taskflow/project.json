@@ -46,7 +46,7 @@
     "coverage_command": "uv run pytest --cov=src --cov-report=term-missing",
     "naming_convention": "test_*.py",
     "async_mode": "auto",
-    "test_count": 103,
+    "test_count": 400,
     "patterns": [
       "fixtures",
       "monkeypatch",
@@ -75,7 +75,7 @@
     "entry_points": [
       "run.py"
     ],
-    "notes": "server.py is the sole cross-layer orchestrator. Domain modules (verification, tree, workflows) have zero cross-dependencies. tree.py is used externally by MCP clients, not imported by server.py."
+    "notes": "server.py is the sole cross-layer orchestrator. Domain modules (verification, tree, workflows) have zero cross-dependencies. server.py imports render_subtree and render_tree from tree.py for task display."
   },
   "conventions": {
     "naming_style": "snake_case (variables/functions), PascalCase (classes), UPPER_SNAKE_CASE (constants)",
@@ -117,7 +117,7 @@
   "api": {
     "framework": "mcp (FastMCP)",
     "style": "MCP tools (stdio transport)",
-    "tools": ["task_create", "task_start", "task_complete", "task_fail", "task_types"],
+    "tools": ["task_create", "task_start", "task_complete", "task_fail", "task_reset", "task_delete", "task_move", "task_get", "task_update", "task_reorder", "task_current", "task_resume", "task_next", "task_context", "task_list", "task_search", "task_stats", "task_history", "task_types", "task_analytics", "task_cleanup"],
     "database": "SQLite (WAL mode, foreign keys enabled)",
     "orm": "aiosqlite (raw SQL, manual row-to-dataclass mapping)",
     "auth": "none (inherits OS-level process security from MCP host)",
@@ -130,12 +130,16 @@
     "test_dirs": ["tests"],
     "key_files": {
       "run.py": "MCP server entry point (stdio transport)",
-      "src/server.py": "MCP tool definitions — 5 tools",
+      "src/server.py": "MCP tool definitions — 21 tools",
       "src/db.py": "SQLite persistence layer — CRUD + current task tracking",
       "src/models.py": "Domain models — Task dataclass, TaskStatus StrEnum",
       "src/verification.py": "State transition validation — finite state machine",
       "src/workflows.py": "Workflow type definitions — 10 workflow types with agent assignments",
       "src/tree.py": "Task tree rendering — icons, labels, nested display",
+      "src/hooks.py": "Workflow lifecycle hooks — event-driven automation callbacks",
+      "src/analytics.py": "Task analytics — query engine for workflow metrics and insights",
+      "src/workflow_loader.py": "Custom workflow loader — YAML-based workflow template loading",
+      "src/migrations.py": "Database migrations — schema versioning and upgrade logic",
       "schemas/project-profile.json": "JSON schema for this profile file",
       "skills/languages/*.md": "Language standards for Python, TypeScript, Rust, Go"
     }

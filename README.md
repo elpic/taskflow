@@ -64,7 +64,8 @@ Each agent receives context from the previous step. The reviewer can loop back t
 | **Organization** | `task_move`, `task_reorder` |
 | **Session** | `task_resume`, `task_context`, `task_history` |
 | **Orchestration** | `task_next` (server-side step enforcement) |
-| **Analytics** | `task_stats` |
+| **Analytics** | `task_stats`, `task_analytics` |
+| **Maintenance** | `task_cleanup` |
 | **Meta** | `task_types` |
 
 Key features: idempotent creation, blocked_by dependencies with cycle detection, agent output storage, audit trail, session recovery, position-based ordering.
@@ -109,7 +110,7 @@ uv sync                          # Install dependencies
 uv run ruff check .              # Lint
 uv run ruff format .             # Format
 uv run ty check                  # Type check
-uv run pytest                    # Run 216 tests
+uv run pytest                    # Run 400 tests
 uv run pytest --cov=src          # Coverage
 uv build                         # Build wheel
 ```

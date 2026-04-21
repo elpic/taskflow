@@ -14,6 +14,7 @@ from src.server import mcp
 EXPECTED_TOOL_NAMES: frozenset[str] = frozenset(
     {
         "task_analytics",
+        "task_cleanup",
         "task_complete",
         "task_context",
         "task_create",
@@ -40,6 +41,7 @@ EXPECTED_TOOL_COUNT: int = len(EXPECTED_TOOL_NAMES)
 
 EXPECTED_PARAMETERS: dict[str, frozenset[str]] = {
     "task_analytics": frozenset({"query", "days"}),
+    "task_cleanup": frozenset({"days"}),
     "task_complete": frozenset({"task_id", "output", "summary"}),
     "task_context": frozenset({"task_id", "max_chars"}),
     "task_create": frozenset(

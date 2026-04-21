@@ -1,7 +1,7 @@
 import asyncio
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -590,6 +590,38 @@ async def get_all_descendants(root_id: str) -> list[Task]:
             result.append(child)
             queue.append(child.id)
     return result
+
+
+async def cleanup_done_roots(days: int = 7) -> int:
+    """Delete completed root tasks older than days. Return count deleted."""
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    db = await get_db()
+    cursor = await db.execute(
+        """
+        SELECT t.id FROM tasks t
+        WHERE t.parent_id IS NULL
+          AND t.status = 'done'
+          AND t.completed_at IS NOT NULL
+          AND t.completed_at < ?
+          AND NOT EXISTS (
+              WITH RECURSIVE subtree(id) AS (
+                  SELECT id FROM tasks WHERE parent_id = t.id
+                  UNION ALL
+                  SELECT c.id FROM tasks c
+                  JOIN subtree s ON c.parent_id = s.id
+              )
+              SELECT 1 FROM subtree s
+              JOIN tasks d ON d.id = s.id
+              WHERE d.status != 'done'
+          )
+        """,
+        (cutoff,),
+    )
+    rows = await cursor.fetchall()
+    root_ids = [row["id"] for row in rows]
+    for rid in root_ids:
+        await delete_task(rid)
+    return len(root_ids)
 
 
 async def get_ready_tasks(parent_id: str | None = None) -> list[Task]:

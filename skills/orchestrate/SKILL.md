@@ -121,38 +121,83 @@ You may NEVER skip:
 
 ---
 
-## Claude UI Visibility (REQUIRED)
+## Claude UI Visibility (MANDATORY — DO NOT SKIP)
 
-### Native Task Progress
+The user MUST see progress in the Claude UI task list at all times. Without this, they see a wall of tool calls. This is the #1 user complaint.
 
-The user MUST always see progress in the Claude UI task list. Without this, they see a wall of tool calls.
+### Phase 1: Ticket-Level Tasks (Sprint/Product)
 
-**Before starting any workflow:**
-- Create native tasks (TaskCreate) for each step
-- Chain with `addBlockedBy` to show the workflow order
-
-**During each step:**
-- `TaskUpdate(status=in_progress)` with `activeForm` showing what's happening
-- Example: `activeForm: "Implementing authentication module"`
-
-**After each step:**
-- `TaskUpdate(status=completed)` immediately when done
-
-### Drill-Down Navigation
-
-When entering a sub-workflow (e.g., implement pipeline under a sprint ticket):
-1. Delete ticket-level native tasks
-2. Create step-level native tasks (Design → Implement → Tests → Review)
-3. Work through them with visible progress
-4. When done: delete step tasks, recreate ticket tasks with updated statuses
+Before entering the continuous delivery loop, create one native task per ticket:
 
 ```
-TICKET LEVEL:                    DRILL INTO TICKET 2:              BACK TO TICKET LEVEL:
-✓ Ticket 1: task_list            ○ Design solution                 ✓ Ticket 1: task_list
-◈ Ticket 2: task_get     →      ◈ Implement                  →    ✓ Ticket 2: task_get
-○ Ticket 3: task_current         ○ Create tests                    ◈ Ticket 3: task_current
-○ Ticket 4: task_update          ○ Code review                     ○ Ticket 4: task_update
+# For each ticket in the sprint backlog:
+TaskCreate(subject="Ticket 1: <name>", description="...")  → id=T1
+TaskCreate(subject="Ticket 2: <name>", description="...")  → id=T2
+TaskCreate(subject="Ticket 3: <name>", description="...")  → id=T3
+TaskUpdate(taskId=T2, addBlockedBy=[T1])
+TaskUpdate(taskId=T3, addBlockedBy=[T2])
 ```
+
+### Phase 2: Drill Into a Ticket (REQUIRED for every ticket)
+
+When starting work on a ticket, DELETE the ticket-level tasks and CREATE step-level tasks:
+
+```
+# 1. Delete ONLY the current ticket's task (keep others for overview)
+TaskUpdate(taskId=T2, status="deleted")  # drilling into Ticket 2
+
+# 2. Create step-level tasks for the current ticket's workflow
+TaskCreate(subject="Create branch", ...)        → id=S1
+TaskCreate(subject="Design solution", ...)      → id=S2
+TaskCreate(subject="Implement", ...)            → id=S3
+TaskCreate(subject="Create tests", ...)         → id=S4
+TaskCreate(subject="Code review", ...)          → id=S5
+TaskCreate(subject="Commit and create PR", ...) → id=S6
+
+# 3. Chain them
+TaskUpdate(taskId=S2, addBlockedBy=[S1])
+TaskUpdate(taskId=S3, addBlockedBy=[S2])
+TaskUpdate(taskId=S4, addBlockedBy=[S3])
+TaskUpdate(taskId=S5, addBlockedBy=[S4])
+TaskUpdate(taskId=S6, addBlockedBy=[S5])
+```
+
+### Phase 3: Work Through Steps
+
+For EACH step, update its status before and after:
+
+```
+# Starting a step:
+TaskUpdate(taskId=S3, status="in_progress", activeForm="Implementing feature X")
+
+# ... delegate to agent ...
+
+# After step completes:
+TaskUpdate(taskId=S3, status="completed")
+```
+
+### Phase 4: Drill Back Up to Ticket Level
+
+After the ticket is merged, DELETE step tasks and RECREATE ticket tasks with updated statuses:
+
+```
+# 1. Delete step-level tasks
+TaskUpdate(taskId=S1, status="deleted")
+TaskUpdate(taskId=S2, status="deleted")
+# ... delete all step tasks ...
+
+# 2. Recreate the completed ticket's task as done
+TaskCreate(subject="Ticket 2: <name>", ...)  → id=T2_new
+TaskUpdate(taskId=T2_new, status="completed")
+# T1 was already completed, T3 is still pending — both untouched
+```
+
+### Checklist (verify before EACH agent delegation)
+
+- [ ] Native tasks exist for the current workflow steps
+- [ ] The current step is marked `in_progress` with `activeForm`
+- [ ] The previous step is marked `completed`
+- [ ] Agent prompt includes prior step outputs (`task_context`)
 
 ---
 
@@ -191,16 +236,10 @@ Pull main, delete the feature branch, verify clean state.")
 
 ### Sprint Progress Tracking
 
-**Before the loop starts:**
-- Create one native task per backlog ticket
-- Chain them with `addBlockedBy`
+Sprint tracking follows the 4 phases above:
+1. **Phase 1** at sprint start — create ticket-level tasks
+2. **Phase 2** when entering each ticket — drill down to step tasks
+3. **Phase 3** during each step — update in_progress/completed
+4. **Phase 4** after each ticket merges — drill back up
 
-**During each ticket:**
-- Set `in_progress` when starting
-- Drill down into implement steps
-- Drill back up when done
-
-**After each ticket merges:**
-- Set `completed` — cumulative progress visible
-
-**NEVER run a sprint without visible progress.** This is the #1 user complaint.
+**NEVER run a sprint without visible progress.** If you find yourself delegating to an agent without native tasks visible in the Claude UI, STOP and create them first.

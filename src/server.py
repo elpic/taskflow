@@ -89,6 +89,13 @@ async def task_create(
             if existing:
                 return existing.id  # Idempotent replay; no hint
 
+        # Validate task_type before touching the DB so no orphaned root task is created.
+        if task_type:
+            try:
+                get_workflow(task_type)
+            except ValueError as e:
+                return f"error:{e}"
+
         # Snapshot emptiness *before* inserting so the hint check is accurate.
         db_was_empty = not await db.has_tasks()
 

@@ -35,10 +35,13 @@ class TestGetWorkflow:
         steps = get_workflow("implement")
         assert len(steps) > 0
 
-    def test_unknown_type_falls_back_to_simple(self):
-        steps = get_workflow("nonexistent_type")
-        simple_steps = get_workflow("simple")
-        assert steps == simple_steps
+    def test_unknown_type_raises_value_error(self):
+        with pytest.raises(ValueError, match="invalid task_type 'nonexistent_type'"):
+            get_workflow("nonexistent_type")
+
+    def test_unknown_type_error_lists_valid_types(self):
+        with pytest.raises(ValueError, match="Valid types:"):
+            get_workflow("implment")
 
     def test_bugfix_workflow_has_reproduce_step(self):
         steps = get_workflow("bugfix")
@@ -227,11 +230,10 @@ class TestCustomWorkflows:
         steps = get_workflow("simple")
         assert steps[0].name == "Custom step"
 
-    def test_unknown_type_still_falls_back_to_simple(self, tmp_path: Path):
+    def test_unknown_type_raises_value_error_with_custom_dir(self, tmp_path: Path):
         set_custom_workflows_dir(tmp_path)
-        steps = get_workflow("totally-unknown-type")
-        simple_steps = WORKFLOWS["simple"]
-        assert steps == simple_steps
+        with pytest.raises(ValueError, match="invalid task_type"):
+            get_workflow("totally-unknown-type")
 
     def test_set_custom_workflows_dir_invalidates_cache(self, tmp_path: Path):
         dir_a = tmp_path / "a"

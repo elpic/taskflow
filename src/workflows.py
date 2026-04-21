@@ -557,7 +557,10 @@ def get_workflow(task_type: str) -> list[WorkflowStep]:
     custom = _get_custom_workflows()
     if task_type in custom:
         return custom[task_type]
-    return WORKFLOWS.get(task_type, WORKFLOWS["simple"])
+    if task_type in WORKFLOWS:
+        return WORKFLOWS[task_type]
+    valid = ", ".join(list_types())
+    raise ValueError(f"invalid task_type '{task_type}'. Valid types: {valid}")
 
 
 def list_types() -> list[str]:

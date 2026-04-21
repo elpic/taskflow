@@ -969,5 +969,23 @@ async def task_analytics(query: str, days: int = 30) -> str:
     return await handler(days=days)
 
 
+@mcp.tool()
+async def task_cleanup(days: int = 7) -> str:
+    """Delete completed root task trees older than N days.
+
+    Removes root tasks (no parent) that are DONE and whose completed_at
+    timestamp is older than the specified number of days. Cascade-deletes
+    all subtasks, dependencies, and events. Skips root tasks that have
+    any non-done descendants (safety guard).
+
+    Args:
+        days: Minimum age in days for deletion (default 7).
+    """
+    if days < 0:
+        return "error:days must be non-negative"
+    count = await db.cleanup_done_roots(days=days)
+    return f"ok|deleted:{count}"
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

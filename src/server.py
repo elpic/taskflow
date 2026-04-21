@@ -502,6 +502,9 @@ async def task_reorder(task_id: str, position: int) -> str:
         task_id: The task ID to reorder
         position: Integer position (lower = higher priority, 0-based)
     """
+    if position < 0:
+        return "error:position must be non-negative"
+
     task = await db.get_task(task_id)
     if not task:
         return "error:not found"

@@ -351,6 +351,10 @@ class TestTaskDelete:
 
 
 class TestTaskReorder:
+    async def test_reorder_negative_position(self):
+        result = await task_reorder("any-id", -1)
+        assert result == "error:position must be non-negative"
+
     async def test_reorder_not_found(self):
         result = await task_reorder("nonexistent", 0)
         assert result == "error:not found"

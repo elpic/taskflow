@@ -1,12 +1,18 @@
 import contextlib
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
 from . import db
-from .analytics import agent_performance, step_bottlenecks, velocity, workflow_summary
+from .analytics import (
+    _format_duration,
+    agent_performance,
+    step_bottlenecks,
+    velocity,
+    workflow_summary,
+)
 from .hooks import get_hook_manager, init_hooks
 from .models import TaskStatus
 from .tree import render_subtree, render_tree
@@ -891,19 +897,6 @@ async def task_stats(task_id: str) -> str:
             lines.append(f"  - {child.name} [{status}]{dur}")
 
     return "\n".join(lines)
-
-
-def _format_duration(td: timedelta) -> str:
-    total_seconds = int(td.total_seconds())
-    if total_seconds < 60:
-        return f"{total_seconds}s"
-    minutes = total_seconds // 60
-    seconds = total_seconds % 60
-    if minutes < 60:
-        return f"{minutes}m {seconds}s"
-    hours = minutes // 60
-    minutes = minutes % 60
-    return f"{hours}h {minutes}m"
 
 
 @mcp.tool()

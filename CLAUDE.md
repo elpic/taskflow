@@ -23,7 +23,7 @@ Use only when the user explicitly requests it:
 
 ## When to Use Taskflow (AUTO-ACTIVATE)
 
-When the user asks to implement, build, fix, refactor, or create something that requires 2+ steps, **automatically invoke the `taskflow:orchestrate` skill** — the user does NOT need to prefix with `/taskflow:orchestrate`.
+When the user asks to implement, build, fix, refactor, or create something that requires 2+ steps, **automatically invoke `/taskflow`** — the user does NOT need to type `/taskflow` explicitly.
 
 **AUTO-ACTIVATE for**:
 - Implementing features or writing code

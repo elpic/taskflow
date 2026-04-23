@@ -1,6 +1,17 @@
 ---
-name: taskflow-orchestrate
-description: "Automatically decompose any user request into tracked, verified subtasks with agent delegation and continuous delivery"
+name: taskflow
+description: "Taskflow orchestration — use /taskflow to orchestrate work, /taskflow version for version info"
+---
+
+Handle the following input: $ARGUMENTS
+
+If the input is "version" or contains "version" or "what version":
+- Read `pyproject.toml` and extract the version field
+- Report: "Taskflow v{version}" along with the tool count from the MCP server
+- Do NOT proceed with orchestration
+
+For ALL other input (including empty input), follow the Task Orchestration Protocol below.
+
 ---
 
 # Task Orchestration Protocol

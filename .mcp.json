@@ -3,7 +3,10 @@
     "taskflow": {
       "type": "stdio",
       "command": "uv",
-      "args": ["run", "run.py"]
+      "args": ["run", "run.py"],
+      "env": {
+        "MISE_YES": "1"
+      }
     }
   }
 }

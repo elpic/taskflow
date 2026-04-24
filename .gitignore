@@ -14,3 +14,4 @@ htmlcov/
 dist/
 *.egg-info
 .claude/settings.local.json
+.mise.toml

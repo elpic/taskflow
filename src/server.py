@@ -1,9 +1,11 @@
 import contextlib
 import json
+import logging
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
 from . import db
 from .analytics import (
@@ -25,10 +27,20 @@ from .verification import (
 )
 from .workflows import WORKFLOWS, get_workflow, set_custom_workflows_dir
 
+_logger = logging.getLogger("taskflow")
+
+
+@asynccontextmanager
+async def _lifespan(server: FastMCP):
+    _logger.info("MCP lifespan started")
+    yield {}
+    _logger.info("MCP lifespan stopped")
+
+
 # Configure custom workflows directory (relative to CWD)
 set_custom_workflows_dir(Path.cwd() / ".taskflow" / "workflows")
 
-mcp = FastMCP("taskflow")
+mcp = FastMCP("taskflow", lifespan=_lifespan)
 
 # Initialize hooks
 init_hooks(Path.cwd() / ".taskflow" / "hooks.json")
@@ -74,6 +86,7 @@ async def task_create(
     task_type: str | None = None,
     idempotency_key: str | None = None,
     blocked_by: list[str] | None = None,
+    ctx: Context | None = None,
 ) -> str:
     """Create a new task. If task_type is specified, auto-generates workflow subtasks.
 
@@ -100,6 +113,8 @@ async def task_create(
             try:
                 get_workflow(task_type)
             except ValueError as e:
+                if ctx:
+                    await ctx.warning(f"task_create error: {e}")
                 return f"error:{e}"
 
         # Snapshot emptiness *before* inserting so the hint check is accurate.
@@ -118,6 +133,8 @@ async def task_create(
                 await db.add_dependencies(task.id, blocked_by)
             except ValueError as e:
                 await db.delete_task(task.id)
+                if ctx:
+                    await ctx.warning(f"task_create error: {e}")
                 return f"error:{e}"
 
         await db.log_event(
@@ -152,10 +169,13 @@ async def task_create(
                         for dep_name in step.depends_on:
                             if dep_name not in name_to_id:
                                 await db.delete_task(task.id)
-                                return (
+                                msg = (
                                     f"error:workflow '{task_type}' step '{step.name}'"
                                     f" depends_on unknown step '{dep_name}'"
                                 )
+                                if ctx:
+                                    await ctx.warning(f"task_create error: {msg}")
+                                return msg
                             dep_ids.append(name_to_id[dep_name])
                         await db.add_dependencies(step_id, dep_ids)
                 else:
@@ -173,7 +193,7 @@ async def task_create(
 
 
 @mcp.tool()
-async def task_start(task_id: str) -> str:
+async def task_start(task_id: str, ctx: Context | None = None) -> str:
     """Start a task. Sets it as current."""
     task = await db.get_task(task_id)
     if not task:
@@ -182,6 +202,8 @@ async def task_start(task_id: str) -> str:
     try:
         validate_transition(task.status, TaskStatus.IN_PROGRESS)
     except TransitionError as e:
+        if ctx:
+            await ctx.error(str(e))
         return f"error:{e}"
 
     blockers = await db.get_blockers(task_id)
@@ -201,7 +223,10 @@ async def task_start(task_id: str) -> str:
 
 @mcp.tool()
 async def task_complete(
-    task_id: str, output: str | None = None, summary: str | None = None
+    task_id: str,
+    output: str | None = None,
+    summary: str | None = None,
+    ctx: Context | None = None,
 ) -> str:
     """Complete a task. Auto-creates verification subtask if criteria exist.
 
@@ -242,6 +267,8 @@ async def task_complete(
         try:
             validate_transition(task.status, TaskStatus.DONE)
         except TransitionError as e:
+            if ctx:
+                await ctx.error(str(e))
             return f"error:{e}"
 
     # All preconditions passed — now modify state
@@ -290,6 +317,8 @@ async def task_complete(
         fields = compute_complete_fields(task, children)
         validate_transition(task.status, TaskStatus(fields["status"]))
     except TransitionError as e:
+        if ctx:
+            await ctx.error(str(e))
         return f"error:{e}"
 
     await db.update_task(task_id, **fields)
@@ -331,7 +360,7 @@ async def _append_unblocked(completed_task_id: str, base: str) -> str:
 
 
 @mcp.tool()
-async def task_fail(task_id: str, reason: str) -> str:
+async def task_fail(task_id: str, reason: str, ctx: Context | None = None) -> str:
     """Mark a task as failed."""
     task = await db.get_task(task_id)
     if not task:
@@ -340,12 +369,16 @@ async def task_fail(task_id: str, reason: str) -> str:
     try:
         validate_transition(task.status, TaskStatus.FAILED)
     except TransitionError as e:
+        if ctx:
+            await ctx.error(str(e))
         return f"error:{e}"
 
     await db.update_task(task_id, **compute_fail_fields(reason))
     await db.log_event(task_id, "failed", {"reason": reason})
     hooks = get_hook_manager()
     await hooks.fire("on_task_fail", task_id, task.name, "failed")
+    if ctx:
+        await ctx.info(f"Task failed: {reason}")
     return "ok"
 
 

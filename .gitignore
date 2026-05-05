@@ -1,18 +1,25 @@
-.venv/
-__pycache__/
-*.pyc
+# Go build artifacts
+/taskflow-mcp
+/taskflow-mcp.exe
+/dist/
+*.test
+*.out
+coverage.out
+
+# Local data
 data/
 .taskflow/*.db
 .taskflow/*.db-wal
 .taskflow/*.db-shm
 .taskflow/*.log
-*.db
-*.db-wal
-*.db-shm
-.coverage
-htmlcov/
-.pytest_cache/
-dist/
-*.egg-info
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Claude
 .claude/settings.local.json
+
+# Mise (gitignored to prevent MCP startup failures, per commit 144af57)
 .mise.toml

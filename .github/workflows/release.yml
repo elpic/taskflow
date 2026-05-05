@@ -39,7 +39,6 @@ jobs:
           AUTHOR=$(git log -1 --pretty=%an)
           echo "msg=$MSG" >> "$GITHUB_OUTPUT"
 
-          # Skip version-sync commits from this workflow
           if [ "$AUTHOR" = "github-actions[bot]" ]; then
             echo "type=none" >> "$GITHUB_OUTPUT"
             exit 0
@@ -74,53 +73,36 @@ jobs:
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
           echo "Bump: ${{ steps.current.outputs.version }} → $NEXT ($BUMP)"
 
-      - name: Set up uv
-        if: steps.bump.outputs.type != 'none'
-        uses: astral-sh/setup-uv@v4
-
-      - name: Build wheel
-        if: steps.bump.outputs.type != 'none'
-        run: uv build
-
-      - name: Create tag and release
+      - name: Create and push tag
         if: steps.bump.outputs.type != 'none'
         run: |
           TAG="v${{ steps.next.outputs.version }}"
           git tag "$TAG"
           git push origin "$TAG"
 
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --notes "${{ steps.bump.outputs.msg }}" \
-            --latest \
-            dist/*
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Go
+        if: steps.bump.outputs.type != 'none'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
 
-      - name: Update version files
+      - name: Run GoReleaser
+        if: steps.bump.outputs.type != 'none'
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update version in plugin metadata
         if: steps.bump.outputs.type != 'none'
         run: |
           NEXT="${{ steps.next.outputs.version }}"
-          sed -i "s/^version = \".*\"/version = \"${NEXT}\"/" pyproject.toml
-          python3 -c "
-          import json
-          with open('.claude-plugin/plugin.json') as f:
-              data = json.load(f)
-          data['version'] = '${NEXT}'
-          with open('.claude-plugin/plugin.json', 'w') as f:
-              json.dump(data, f, indent=2)
-              f.write('\n')
-          "
-          python3 -c "
-          import json
-          with open('.claude-plugin/marketplace.json') as f:
-              data = json.load(f)
-          assert data.get('plugins'), 'marketplace.json: plugins array is empty'
-          data['plugins'][0]['version'] = '${NEXT}'
-          with open('.claude-plugin/marketplace.json', 'w') as f:
-              json.dump(data, f, indent=2)
-              f.write('\n')
-          "
+          jq --arg v "$NEXT" '.version = $v' .claude-plugin/plugin.json > /tmp/plugin.json && mv /tmp/plugin.json .claude-plugin/plugin.json
+          jq --arg v "$NEXT" '.plugins[0].version = $v' .claude-plugin/marketplace.json > /tmp/marketplace.json && mv /tmp/marketplace.json .claude-plugin/marketplace.json
 
       - name: Create version-sync PR
         id: version-pr

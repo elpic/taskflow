@@ -18,8 +18,8 @@ func (nopHooks) Fire(event, taskID, taskName, status string) error { return nil 
 // nopLogger implements domain.Logger with no-op behavior.
 type nopLogger struct{}
 
-func (nopLogger) Info(msg string) {}
-func (nopLogger) Warn(msg string) {}
+func (nopLogger) Info(msg string)  {}
+func (nopLogger) Warn(msg string)  {}
 func (nopLogger) Error(msg string) {}
 
 // newTestService builds a full Service backed by a real SQLite DB in a temp dir.

@@ -18,9 +18,9 @@ var builtinFS embed.FS
 
 // Source implements domain.WorkflowSource, combining builtin and custom workflows.
 type Source struct {
-	mu       sync.RWMutex
-	builtin  map[string]*domain.Workflow
-	custom   map[string]*domain.Workflow
+	mu        sync.RWMutex
+	builtin   map[string]*domain.Workflow
+	custom    map[string]*domain.Workflow
 	customDir string
 }
 
@@ -92,10 +92,10 @@ type rawWorkflow struct {
 }
 
 type rawStep struct {
-	Name                 string   `yaml:"name"`
-	Description          string   `yaml:"description"`
-	VerificationCriteria string   `yaml:"verification_criteria"`
-	Agent                string   `yaml:"agent"`
+	Name                 string    `yaml:"name"`
+	Description          string    `yaml:"description"`
+	VerificationCriteria string    `yaml:"verification_criteria"`
+	Agent                string    `yaml:"agent"`
 	DependsOn            *[]string `yaml:"depends_on"` // pointer to distinguish nil vs []
 }
 

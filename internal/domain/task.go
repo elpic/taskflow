@@ -38,8 +38,8 @@ type Task struct {
 	ParentID             *string
 	VerificationCriteria *string
 	VerificationResult   *string
-	Metadata             string  // raw JSON, default "{}"
-	CreatedAt            string  // RFC3339 UTC
+	Metadata             string // raw JSON, default "{}"
+	CreatedAt            string // RFC3339 UTC
 	StartedAt            *string
 	CompletedAt          *string
 	AgentOutput          *string

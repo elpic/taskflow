@@ -62,4 +62,3 @@ func (s *Service) TaskTypes(hint *HintOnce) (string, error) {
 	hintStr := hint.Consume(!hasTasksBefore)
 	return result + hintStr, nil
 }
-

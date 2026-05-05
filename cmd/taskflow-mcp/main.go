@@ -23,7 +23,7 @@ func main() {
 }
 
 func run() error {
-	// Database path: ./data/taskflow.db (relative to CWD, matching Python behavior)
+	// Database path: ./data/taskflow.db (relative to the project root where Claude Code launches this binary)
 	dbPath := filepath.Join("data", "taskflow.db")
 
 	// Open SQLite connection

@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BINARY="$SCRIPT_DIR/taskflow-mcp"
+VERSION_FILE="$SCRIPT_DIR/.taskflow/version"
 REPO="elpic/taskflow"
 
 # ---------------------------------------------------------------------------
@@ -39,7 +40,7 @@ LATEST_URL=$(curl -sI \
   2>/dev/null | grep -i '^location:' | tr -d '\r' | awk '{print $2}' || true)
 
 if [ -z "$LATEST_URL" ]; then
-  # GitHub unreachable or no redirect — fall back to existing binary
+  # GitHub unreachable — fall back to existing binary
   if [ -x "$BINARY" ]; then
     echo "[taskflow] could not reach GitHub, using existing binary" >&2
     exec "$BINARY" "$@"
@@ -62,11 +63,11 @@ if [ -z "$REMOTE_VERSION" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Compare with local version
+# Compare against locally cached version (file read, no subprocess)
 # ---------------------------------------------------------------------------
 LOCAL_VERSION="none"
-if [ -x "$BINARY" ]; then
-  LOCAL_VERSION=$("$BINARY" --version 2>/dev/null || echo "none")
+if [ -f "$VERSION_FILE" ] && [ -x "$BINARY" ]; then
+  LOCAL_VERSION=$(cat "$VERSION_FILE" 2>/dev/null || echo "none")
 fi
 
 if [ "$LOCAL_VERSION" = "$REMOTE_VERSION" ]; then
@@ -102,5 +103,9 @@ fi
 tar -xzf "$TMPDIR_PATH/$ARCHIVE_NAME" -C "$TMPDIR_PATH"
 chmod +x "$TMPDIR_PATH/taskflow-mcp"
 mv "$TMPDIR_PATH/taskflow-mcp" "$BINARY"
+
+# Persist version so next launch skips the download
+mkdir -p "$(dirname "$VERSION_FILE")"
+echo "$REMOTE_VERSION" > "$VERSION_FILE"
 
 exec "$BINARY" "$@"

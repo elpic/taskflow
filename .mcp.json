@@ -3,7 +3,7 @@
     "taskflow": {
       "type": "stdio",
       "command": "bash",
-      "args": ["install.sh"]
+      "args": ["mcp.sh"]
     }
   }
 }

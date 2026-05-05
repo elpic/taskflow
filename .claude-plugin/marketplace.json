@@ -8,7 +8,7 @@
       "name": "taskflow",
       "source": "./",
       "description": "Hierarchical task orchestration with agent delegation, continuous delivery, and verification",
-      "version": "2.8.0",
+      "version": "3.0.0",
       "author": {
         "name": "elpic"
       },

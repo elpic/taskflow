@@ -1,0 +1,13 @@
+name: sprint
+steps:
+  - name: Review backlog
+    description: Review the existing backlog of tasks. Query taskflow for pending tasks. Present the current state of the backlog to the product owner
+    agent: product-manager
+  - name: Prioritize and select
+    description: Product owner prioritizes pending backlog items by impact/effort. Select which items to include in this sprint. Output an ordered list of items to execute
+    agent: product-manager
+  - name: Execute sprint
+    description: "[UI] Create one native task per ticket with addBlockedBy chains. Drill down into each ticket during execution. Work through the selected items in priority order. For each item, create child tasks with task_type=implement and run the full pipeline. Track velocity and report at the end"
+  - name: Sprint retrospective
+    description: "Review what was completed, what was blocked, what was learned. Store learnings in mempalace. Update backlog with any new items discovered during the sprint. [UI] After sprint completes, delete step-level native tasks and restore ticket-level tasks with updated statuses."
+    agent: product-manager

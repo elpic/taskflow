@@ -1,0 +1,61 @@
+name: setup
+steps:
+  - name: Define project scope
+    description: "[UI] Before starting, create native tasks (TaskCreate) for all steps in this workflow with addBlockedBy chains. Define the project: name, purpose, primary language, target platform. Determine if it's a library, CLI tool, web app, API, or service. Output: project name, type, language, target platform, key requirements"
+    agent: tech-architect
+    depends_on: []
+  - name: Initialize project
+    description: Create the project directory and initialize with the appropriate package manager (uv init, pnpm init, cargo init, go mod init). Create pyproject.toml/package.json/Cargo.toml with correct metadata. Set up .gitignore
+    agent: developer
+    depends_on:
+      - Define project scope
+  - name: Set up code quality
+    description: Configure linter, formatter, and type checker. Add as dev dependencies. Create config in the project file (pyproject.toml [tool.ruff], biome.json, etc). Set up pre-commit hooks if applicable. Verify all tools run cleanly on the empty project
+    verification_criteria: Linter, formatter, and type checker all run without errors
+    agent: developer
+    depends_on:
+      - Initialize project
+  - name: Set up testing
+    description: Configure the test runner. Add as dev dependency. Create tests/ directory with a sample test. Configure coverage. Verify test runner works
+    verification_criteria: Test runner executes and sample test passes
+    agent: qa-engineer
+    depends_on:
+      - Initialize project
+  - name: Configure local permissions
+    description: Create .claude/settings.local.json with allowed tool permissions for the project's CLI commands (lint, format, type-check, test, build). Read the project profile or package config to determine which commands to allow. This enables autonomous operation without manual permission prompts
+    verification_criteria: .claude/settings.local.json exists with appropriate Bash tool permissions
+    agent: developer
+    depends_on:
+      - Set up code quality
+      - Set up testing
+  - name: Create CI/CD pipeline
+    description: Create GitHub Actions workflow (or appropriate CI for the project). Include stages: lint, type-check, test, build. Configure dependency caching for the package manager. Set up PR checks. Add branch protection recommendations. Create .github/workflows/ci.yml
+    verification_criteria: CI workflow file is valid YAML and covers lint, type-check, test, build stages
+    agent: devops-engineer
+    depends_on:
+      - Set up code quality
+      - Set up testing
+  - name: Set up containerization
+    description: Create Dockerfile with multi-stage build appropriate for the project type. Create .dockerignore. Create docker-compose.yml if the project has external dependencies (database, redis, etc). Verify docker build succeeds
+    verification_criteria: docker build succeeds
+    agent: devops-engineer
+    depends_on:
+      - Initialize project
+  - name: Create documentation
+    description: Create README.md with project description, prerequisites, setup instructions, development workflow (lint, test, format commands), architecture overview, contributing guidelines. Create CONTRIBUTING.md if applicable
+    verification_criteria: README has setup, development, and architecture sections
+    agent: developer
+    depends_on:
+      - Create CI/CD pipeline
+      - Set up containerization
+  - name: Generate project profile
+    description: Generate .taskflow/project.json capturing all the project setup decisions tools, commands, conventions, CI/CD config. This becomes the source of truth for all future taskflow operations on this project
+    agent: developer
+    depends_on:
+      - Create documentation
+  - name: Review setup
+    description: "Review the entire project setup: directory structure, configs, CI/CD, Docker, docs. Verify everything works end-to-end: install deps, run lint, run tests, build container. Flag any issues. [UI] After review completes, delete step-level native tasks and restore ticket-level tasks with updated statuses."
+    verification_criteria: Full dev workflow works install → lint → test → build → docker build
+    agent: devops-reviewer
+    depends_on:
+      - Generate project profile

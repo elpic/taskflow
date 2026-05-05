@@ -13,6 +13,7 @@ import (
 	"github.com/elpic/taskflow/internal/adapters/sqlite"
 	"github.com/elpic/taskflow/internal/adapters/workflows"
 	"github.com/elpic/taskflow/internal/app"
+	"github.com/elpic/taskflow/pkg/version"
 )
 
 func main() {
@@ -23,6 +24,11 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		fmt.Println(version.Version)
+		return nil
+	}
+
 	// Database path: ./data/taskflow.db (relative to the project root where Claude Code launches this binary)
 	dbPath := filepath.Join("data", "taskflow.db")
 

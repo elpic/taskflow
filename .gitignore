@@ -5,6 +5,7 @@ data/
 .taskflow/*.db
 .taskflow/*.db-wal
 .taskflow/*.db-shm
+.taskflow/*.log
 *.db
 *.db-wal
 *.db-shm

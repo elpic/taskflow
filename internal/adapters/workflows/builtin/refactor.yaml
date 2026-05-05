@@ -1,0 +1,24 @@
+name: refactor
+steps:
+  - name: Create branch
+    description: "[UI] Before starting, create native tasks (TaskCreate) for all steps in this workflow with addBlockedBy chains. Create a refactor branch from main. Ensure main is up to date. Branch naming: refactor/<scope-slug>"
+    agent: git-workflow
+  - name: Analyze and plan
+    description: Understand the current code structure and design the refactoring approach
+    agent: tech-architect
+  - name: Implement
+    description: Apply the refactoring changes following the plan
+    verification_criteria: Code compiles/runs without errors
+    agent: developer
+  - name: Verify behavior unchanged
+    description: Confirm all existing behavior is preserved
+    verification_criteria: All tests pass and outputs match pre-refactor behavior
+    agent: qa-engineer
+  - name: Code review
+    description: Review the refactored code for quality and correctness
+    verification_criteria: Refactoring improves code without changing behavior
+    agent: code-reviewer
+  - name: Commit and create PR
+    description: "Stage all changes, commit with a refactor: conventional commit message, push the branch, and create a pull request [UI] After PR is created, delete step-level native tasks and restore ticket-level tasks with updated statuses."
+    verification_criteria: PR created with passing CI checks
+    agent: git-workflow

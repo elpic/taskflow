@@ -1,0 +1,13 @@
+name: product
+steps:
+  - name: Define product vision
+    description: "[UI] Before starting, create native tasks (TaskCreate) for all steps in this workflow with addBlockedBy chains. Define the product vision, target users, core problem being solved, and high-level goals. Output: vision statement, target persona, core value proposition"
+    agent: product-manager
+  - name: Break into features
+    description: Decompose the product vision into discrete features and user stories. Each feature should be independently deliverable with clear user value. Output a structured list with name, description, and acceptance criteria for each
+    agent: product-manager
+  - name: Prioritize backlog
+    description: Prioritize features using Impact/Effort matrix. Order the backlog so high-impact, low-effort items come first. Output a numbered priority list with [HIGH/MED/LOW] tags and rationale. IMPORTANT after receiving the list, immediately task_create each feature as a child of the root task to persist the backlog in SQLite
+    agent: product-manager
+  - name: Execute backlog
+    description: "[UI] Create one native task per ticket with addBlockedBy chains. Drill down into each ticket during execution. Work through the prioritized backlog. Each feature already exists as a taskflow task. For each in priority order: create child tasks under it with task_type=implement, then run the full pipeline (architect → developer → QA → docs → containerization → reviewer). Level-switch into each feature, complete it, switch back to backlog"

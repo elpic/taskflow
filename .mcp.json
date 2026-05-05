@@ -3,10 +3,7 @@
     "taskflow": {
       "type": "stdio",
       "command": "bash",
-      "args": ["run.sh"],
-      "env": {
-        "MISE_YES": "1"
-      }
+      "args": ["install.sh"]
     }
   }
 }

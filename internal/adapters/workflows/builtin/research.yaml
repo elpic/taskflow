@@ -1,0 +1,13 @@
+name: research
+steps:
+  - name: Define question
+    description: Clearly define the research question or problem
+  - name: Explore options
+    description: Research and identify possible solutions or approaches
+    agent: tech-architect
+  - name: Evaluate trade-offs
+    description: Compare options by pros, cons, complexity, and risk
+    agent: tech-architect
+  - name: Document recommendation
+    description: Write up findings with a clear recommendation
+    verification_criteria: Recommendation is actionable with clear reasoning

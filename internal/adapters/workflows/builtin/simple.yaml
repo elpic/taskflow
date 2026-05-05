@@ -1,0 +1,12 @@
+name: simple
+steps:
+  - name: Plan
+    description: Analyze the task and plan the approach
+  - name: Execute
+    description: Implement the planned approach
+    verification_criteria: Implementation matches the plan
+    agent: developer
+  - name: Verify
+    description: Verify the implementation works correctly
+    verification_criteria: All acceptance criteria met
+    agent: qa-engineer

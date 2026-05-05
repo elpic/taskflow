@@ -1,0 +1,58 @@
+name: implement
+steps:
+  - name: Create branch
+    description: "[UI] Before starting, create native tasks (TaskCreate) for all steps in this workflow with addBlockedBy chains. Create a feature branch from main. Ensure main is up to date first (git pull origin main). Branch naming: feat/<ticket-slug>"
+    agent: git-workflow
+    depends_on: []
+  - name: Design solution
+    description: Analyze requirements, explore the codebase, and design the architecture and approach
+    agent: tech-architect
+    depends_on:
+      - Create branch
+  - name: Clarifying questions
+    description: Ask clarifying questions if requirements are ambiguous
+    depends_on:
+      - Design solution
+  - name: Review acceptance criteria
+    description: Define and confirm acceptance criteria before implementation
+    agent: tech-architect
+    depends_on:
+      - Clarifying questions
+  - name: Implement
+    description: Write the code to fulfill the requirements following the architect's design
+    verification_criteria: Code compiles/runs without errors
+    agent: developer
+    depends_on:
+      - Review acceptance criteria
+  - name: Create tests
+    description: Write tests for each acceptance criteria
+    verification_criteria: All tests pass
+    agent: qa-engineer
+    depends_on:
+      - Implement
+  - name: Documentation
+    description: Write README, API docs, usage examples, and inline docstrings. Include setup instructions, configuration, and architecture overview
+    verification_criteria: README exists with setup, usage, and API docs. All public functions have docstrings
+    agent: developer
+    depends_on:
+      - Implement
+  - name: Containerization
+    description: Create Dockerfile, .dockerignore, and docker-compose.yml if applicable. Ensure the app builds and runs in a container
+    verification_criteria: docker build succeeds and docker run produces expected output
+    agent: devops-engineer
+    depends_on:
+      - Implement
+  - name: Code review
+    description: Review the full implementation including code, tests, docs, and container config for quality, correctness, and security
+    verification_criteria: All acceptance criteria met, docs complete, container works, code quality is good
+    agent: code-reviewer
+    depends_on:
+      - Create tests
+      - Documentation
+      - Containerization
+  - name: Commit and create PR
+    description: "Stage all changes, commit with a descriptive conventional commit message, push the branch, and create a pull request with full description including summary, changes, and test results [UI] After PR is created, delete step-level native tasks and restore ticket-level tasks with updated statuses."
+    verification_criteria: PR created with passing CI checks
+    agent: git-workflow
+    depends_on:
+      - Code review

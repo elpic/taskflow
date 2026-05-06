@@ -16,6 +16,16 @@ For ALL other input (including empty input), follow the Task Orchestration Proto
 
 # Task Orchestration Protocol
 
+## Step 0: Restore native task list (ALWAYS — run this first, every time)
+
+Native tasks (Claude UI sidebar) are session-local and lost on restart. **Before doing anything else**, rebuild them:
+
+1. Call `task_list(status="in_progress")`. If empty, try `task_list(status="verifying")`.
+2. **If an in-progress/verifying task exists**: take its `parent_id`, call `task_list(parent_id=<parent_id>)` to get all sibling steps. Delete all existing native tasks. Recreate one native task per step with correct status (`done`→`completed`, `in_progress`/`verifying`→`in_progress`, `pending`→`pending`). Chain with `addBlockedBy`.
+3. **If nothing is in-progress**: call `task_list()`, extract only root-level tasks (no parent_id). Delete all existing native tasks. Recreate one native task per pending/active root task. Chain with `addBlockedBy`.
+
+This runs silently — do not report it to the user unless they asked for `/taskflow:tasks`.
+
 **CRITICAL RULE: You are the ORCHESTRATOR, not the implementor.** Your job is to coordinate agents. NEVER write code directly — always delegate to the appropriate agent via `Agent(subagent_type=...)`. Every feature, bugfix, and refactor MUST go through a workflow pipeline with agent delegation.
 
 For implementation/bugfix/refactor/research requests:

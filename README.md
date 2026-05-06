@@ -5,10 +5,21 @@ Task orchestration plugin for [Claude Code](https://claude.com/claude-code). Tur
 ## Quick Start
 
 ```bash
-# Install the plugin
+# 1. Install the plugin
 /plugin marketplace add elpic/taskflow
 /plugin install taskflow@elpic-taskflow
+
+# 2. Download the MCP binary
+/taskflow:update
 ```
+
+`/taskflow:update` downloads the `taskflow-mcp` binary to `~/.local/bin`. If that directory isn't on your `PATH` yet, add it to your shell profile:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then reload (`source ~/.zshrc`) and restart Claude Code.
 
 Then just tell Claude what to build:
 
@@ -106,19 +117,17 @@ Run `discover this project` to generate `.taskflow/project.json` — a profile o
 ## Development
 
 ```bash
-uv sync                          # Install dependencies
-uv run ruff check .              # Lint
-uv run ruff format .             # Format
-uv run ty check                  # Type check
-uv run pytest                    # Run 400 tests
-uv run pytest --cov=src          # Coverage
-uv build                         # Build wheel
+go test ./...                    # Run tests
+go vet ./...                     # Vet
+gofmt -l .                       # Check formatting
+go build ./cmd/taskflow-mcp      # Build binary
 ```
+
+Releases are built with [goreleaser](https://goreleaser.com) for darwin/linux × amd64/arm64.
 
 ## Requirements
 
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/)
+- Go 1.22+
 
 ## License
 

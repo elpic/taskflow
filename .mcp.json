@@ -2,8 +2,7 @@
   "mcpServers": {
     "taskflow": {
       "type": "stdio",
-      "command": "bash",
-      "args": ["install.sh"]
+      "command": "taskflow-mcp"
     }
   }
 }

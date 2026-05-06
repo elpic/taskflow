@@ -272,6 +272,15 @@ TaskUpdate(taskId=T3_new, addBlockedBy=[T2_new])
 
 **CRITICAL**: Never leave step tasks and ticket tasks visible at the same time. Delete ALL of one level before creating the next.
 
+### Session Restart Recovery
+
+Native tasks (Claude UI task list) are ephemeral — they are lost when Claude restarts. On every session start or when `/taskflow:tasks` is called:
+
+1. Call `task_current` to find the active task
+2. If there is an in-progress task → show the **parent's step list** (Level 1), recreate native tasks for those steps
+3. If nothing is in-progress → show **root-level pending tasks only** (Level 0), recreate native tasks for those
+4. Never show the full history — only the currently relevant level
+
 ### Checklist (verify before EACH agent delegation)
 
 - [ ] Native tasks exist for the current workflow steps

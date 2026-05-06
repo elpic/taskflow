@@ -429,6 +429,133 @@ func TestContext_IncludesPriorStepOutput(t *testing.T) {
 	assert.Contains(t, next.Context[0]["output"], "plan output: use hexagonal arch")
 }
 
+// TestUIState tests task_ui_state.
+func TestUIState_Empty(t *testing.T) {
+	svc := newTestService(t)
+	result, err := svc.UIState()
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result), &payload))
+	assert.Equal(t, "root", payload["level"])
+	assert.Equal(t, "Sprint overview", payload["label"])
+	tasks, ok := payload["tasks"].([]any)
+	require.True(t, ok)
+	assert.Empty(t, tasks)
+}
+
+func TestUIState_RootLevel_ShowsPendingTasks(t *testing.T) {
+	svc := newTestService(t)
+	_ = createSimpleTask(t, svc, "Feature A")
+	_ = createSimpleTask(t, svc, "Feature B")
+
+	result, err := svc.UIState()
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result), &payload))
+	assert.Equal(t, "root", payload["level"])
+	tasks := payload["tasks"].([]any)
+	assert.Len(t, tasks, 2)
+}
+
+func TestUIState_RootLevel_ExcludesDoneTasks(t *testing.T) {
+	svc := newTestService(t)
+	doneID := createSimpleTask(t, svc, "Done Task")
+	_, _ = svc.Start(doneID)
+	_, _ = svc.Complete(doneID, "", "")
+	_ = createSimpleTask(t, svc, "Pending Task")
+
+	result, err := svc.UIState()
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result), &payload))
+	assert.Equal(t, "root", payload["level"])
+	tasks := payload["tasks"].([]any)
+	assert.Len(t, tasks, 1)
+	assert.Equal(t, "Pending Task", tasks[0].(map[string]any)["name"])
+}
+
+func TestUIState_StepsLevel_WhenActiveTask(t *testing.T) {
+	svc := newTestService(t)
+	rootID, stepEntries := createWorkflow(t, svc, "Feature", "simple")
+	_ = rootID
+	planID := getStepID(stepEntries[0])
+	_, _ = svc.Start(planID)
+
+	result, err := svc.UIState()
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result), &payload))
+	assert.Equal(t, "steps", payload["level"])
+	assert.True(t, strings.HasPrefix(payload["label"].(string), "Working on:"))
+	tasks := payload["tasks"].([]any)
+	assert.NotEmpty(t, tasks)
+}
+
+func TestUIState_StepsLevel_TaskStatusMapping(t *testing.T) {
+	svc := newTestService(t)
+	_, stepEntries := createWorkflow(t, svc, "Feature", "simple")
+	planID := getStepID(stepEntries[0])
+	_, _ = svc.Start(planID)
+
+	result, err := svc.UIState()
+	require.NoError(t, err)
+
+	var payload struct {
+		Level string `json:"level"`
+		Tasks []struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+		} `json:"tasks"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result), &payload))
+	assert.Equal(t, "steps", payload.Level)
+
+	statusByName := make(map[string]string)
+	for _, t := range payload.Tasks {
+		statusByName[t.Name] = t.Status
+	}
+	assert.Equal(t, "in_progress", statusByName["Plan"])
+	assert.Equal(t, "pending", statusByName["Execute"])
+}
+
+func TestUIState_BlockedBy_InSameLevelOnly(t *testing.T) {
+	svc := newTestService(t)
+	aID := createSimpleTask(t, svc, "Task A")
+	bRaw, err := svc.CreateTask(CreateTaskInput{Name: "Task B", BlockedBy: []string{aID}}, consumedHint())
+	require.NoError(t, err)
+	_ = stripHint(bRaw)
+
+	result, err := svc.UIState()
+	require.NoError(t, err)
+
+	var payload struct {
+		BlockedBy []struct {
+			TaskID      string `json:"task_id"`
+			BlockedByID string `json:"blocked_by_id"`
+		} `json:"blocked_by"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result), &payload))
+	require.Len(t, payload.BlockedBy, 1)
+	assert.Equal(t, aID, payload.BlockedBy[0].BlockedByID)
+}
+
+func TestUIState_HasRequiredFields(t *testing.T) {
+	svc := newTestService(t)
+	result, err := svc.UIState()
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(result), &payload))
+	assert.Contains(t, payload, "level")
+	assert.Contains(t, payload, "label")
+	assert.Contains(t, payload, "tasks")
+	assert.Contains(t, payload, "blocked_by")
+}
+
 // TestReorder tests task_reorder.
 func TestReorder_ValidPosition(t *testing.T) {
 	svc := newTestService(t)

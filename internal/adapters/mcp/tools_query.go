@@ -121,4 +121,15 @@ func registerQueryTools(srv *mcpserver.MCPServer, svc *app.Service) {
 		}
 		return mcp.NewToolResultText(result), nil
 	})
+
+	// task_ui_state
+	srv.AddTool(mcp.NewTool("task_ui_state",
+		mcp.WithDescription("Returns JSON describing what native Claude UI tasks should exist at the current focus level (steps of active ticket, or root-level sprint overview)."),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		result, err := svc.UIState()
+		if err != nil {
+			return text("error:" + err.Error())
+		}
+		return text(result)
+	})
 }

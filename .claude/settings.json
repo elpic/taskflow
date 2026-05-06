@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__taskflow__task_start|mcp__taskflow__task_complete",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[taskflow ui-sync] The task state changed. Immediately call task_ui_state to get the current UI state, then sync the native Claude task list: delete all existing native tasks, recreate from the response (TaskCreate per task, TaskUpdate for statuses and blocked_by). Do this before anything else.'"
+          }
+        ]
+      }
+    ]
+  }
+}

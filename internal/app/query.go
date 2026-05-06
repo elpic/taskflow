@@ -583,6 +583,126 @@ func (s *Service) Cleanup(days int) (string, error) {
 	return fmt.Sprintf("ok|deleted:%d", count), nil
 }
 
+// UIState returns a JSON payload describing what native Claude UI tasks should exist right now.
+func (s *Service) UIState() (string, error) {
+	inProgressStatus := string(domain.StatusInProgress)
+	verifyingStatus := string(domain.StatusVerifying)
+
+	active, err := s.repo.GetTasksFiltered(&inProgressStatus, nil)
+	if err != nil {
+		return "", err
+	}
+	verifying, err := s.repo.GetTasksFiltered(&verifyingStatus, nil)
+	if err != nil {
+		return "", err
+	}
+	active = append(active, verifying...)
+
+	type taskEntry struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	type blockerEntry struct {
+		TaskID      string `json:"task_id"`
+		BlockedByID string `json:"blocked_by_id"`
+	}
+
+	statusStr := func(s domain.TaskStatus) string {
+		switch s {
+		case domain.StatusDone:
+			return "done"
+		case domain.StatusInProgress:
+			return "in_progress"
+		case domain.StatusVerifying:
+			return "verifying"
+		default:
+			return "pending"
+		}
+	}
+
+	var tasks []taskEntry
+	var level, label string
+
+	if len(active) > 0 {
+		level = "steps"
+		first := active[0]
+		var siblings []*domain.Task
+		if first.ParentID != nil {
+			parent, err := s.repo.GetTask(*first.ParentID)
+			if err != nil {
+				return "", err
+			}
+			if parent != nil {
+				label = "Working on: " + parent.Name
+			}
+			siblings, err = s.repo.GetChildren(*first.ParentID)
+			if err != nil {
+				return "", err
+			}
+		} else {
+			label = "Working on: " + first.Name
+			siblings = []*domain.Task{first}
+		}
+		for _, t := range siblings {
+			tasks = append(tasks, taskEntry{ID: t.ID, Name: t.Name, Status: statusStr(t.Status)})
+		}
+	} else {
+		level = "root"
+		label = "Sprint overview"
+		allTasks, err := s.repo.GetAllTasks()
+		if err != nil {
+			return "", err
+		}
+		for _, t := range allTasks {
+			if t.ParentID != nil {
+				continue
+			}
+			if t.Status == domain.StatusDone || t.Status == domain.StatusFailed {
+				continue
+			}
+			tasks = append(tasks, taskEntry{ID: t.ID, Name: t.Name, Status: statusStr(t.Status)})
+		}
+	}
+
+	if tasks == nil {
+		tasks = []taskEntry{}
+	}
+
+	taskIDs := make(map[string]bool, len(tasks))
+	for _, t := range tasks {
+		taskIDs[t.ID] = true
+	}
+
+	var blockedBy []blockerEntry
+	for _, t := range tasks {
+		blockers, err := s.repo.GetBlockers(t.ID)
+		if err != nil {
+			return "", err
+		}
+		for _, b := range blockers {
+			if taskIDs[b.ID] {
+				blockedBy = append(blockedBy, blockerEntry{TaskID: t.ID, BlockedByID: b.ID})
+			}
+		}
+	}
+	if blockedBy == nil {
+		blockedBy = []blockerEntry{}
+	}
+
+	payload := map[string]any{
+		"level":      level,
+		"label":      label,
+		"tasks":      tasks,
+		"blocked_by": blockedBy,
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 // formatDuration formats a duration into human-readable form (matching Python's _format_duration).
 func formatDuration(d time.Duration) string {
 	total := int(d.Seconds())

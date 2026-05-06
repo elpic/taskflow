@@ -32,6 +32,32 @@ func run() error {
 	// Database path: ./data/taskflow.db (relative to the project root where Claude Code launches this binary)
 	dbPath := filepath.Join("data", "taskflow.db")
 
+	if len(os.Args) > 1 && os.Args[1] == "--ui-state" {
+		db, err := sqlite.Open(dbPath)
+		if err != nil {
+			return fmt.Errorf("opening database: %w", err)
+		}
+		defer db.Close()
+		if err := sqlite.Initialize(db); err != nil {
+			return fmt.Errorf("initializing database: %w", err)
+		}
+		repo := sqlite.NewRepository(db)
+		customWorkflowDir := filepath.Join(".taskflow", "workflows")
+		wfSource, err := workflows.NewSource(customWorkflowDir)
+		if err != nil {
+			return fmt.Errorf("loading workflows: %w", err)
+		}
+		hookRunner := hooks.NewRunner(nil, repo)
+		logger := mcpadapter.NewSessionLogger()
+		svc := app.NewService(repo, wfSource, hookRunner, logger)
+		result, err := svc.UIState()
+		if err != nil {
+			return fmt.Errorf("ui-state: %w", err)
+		}
+		fmt.Println(result)
+		return nil
+	}
+
 	// Open SQLite connection
 	db, err := sqlite.Open(dbPath)
 	if err != nil {

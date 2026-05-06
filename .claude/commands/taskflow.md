@@ -63,15 +63,24 @@ while tickets_remaining:
     result = task_next(root_id=sprint_id)  # returns next ready ticket
     ticket_id = result.step_id
 
-    # 2b. Drill down (see Claude UI Phase 2)
-    #     Delete current ticket's native task
-    #     Create step-level native tasks for each workflow step
-    #     Chain with addBlockedBy
+    # 2b. Drill down — FIRST THING, before any exploration or agent calls
+    #     STOP. Do this NOW. Do not read files, do not explore, do not delegate.
+    #     Get the steps for this ticket first, then update the UI, then proceed.
+    steps = task_list(parent_id=ticket_id)  # fetch all steps for this ticket
+    # Delete ALL existing native tasks (every single one, no exceptions)
+    for each existing native task: TaskUpdate(taskId=N, status="deleted")
+    # Create one native task per step, chained in order
+    for each step in steps:
+        native_id = TaskCreate(subject=step.name, description=step.description)
+    # Chain them with addBlockedBy in order
+    # Mark the first pending step as in_progress
+    TaskUpdate(taskId=first_step_native, status="in_progress", activeForm=step.name)
+    # NOW you may proceed with execution
 
     # 2c. Execute ALL steps (branch, design, implement, test, review, PR)
     #     task_next returns steps in order — including git steps
     while step = task_next(root_id=ticket_id):
-        # Update Claude UI
+        # Update Claude UI BEFORE delegating to agent
         TaskUpdate(taskId=step_native, status="in_progress",
                    activeForm=step.step_name)
 
@@ -92,15 +101,23 @@ while tickets_remaining:
     #     Check: gh pr list --state open | grep "sync version"
     #     If found: gh pr merge <N> --squash --delete-branch
 
-    # 2f. Drill back up (see Claude UI Phase 4)
-    #     Delete step tasks, recreate ticket task as completed
+    # 2f. Drill back up — IMMEDIATELY after merge, before moving to next ticket
+    #     STOP. Do this NOW. Delete all step native tasks, recreate sprint overview.
+    for each step native task: TaskUpdate(taskId=N, status="deleted")
+    # Recreate ALL sprint tickets as native tasks with correct statuses:
+    for each ticket in sprint:
+        native_id = TaskCreate(subject=ticket.name)
+        if ticket.done: TaskUpdate(taskId=native_id, status="completed")
+    # Chain pending tickets with addBlockedBy
+    # NOW you may move on to the next ticket
 
     # 2g. Complete the ticket in taskflow
     task_complete(step_id=ticket_id)
 ```
 
 **Key rules:**
-- NEVER skip the drill-down (2b) or drill-back-up (2h) — the user must see progress
+- NEVER skip the drill-down (2b) or drill-back-up (2f) — the user must always see the right level
+- Drill-down and drill-back-up are NOT optional cleanup — they happen BEFORE anything else
 - ALWAYS wait for merge + release before starting the next ticket
 - ALWAYS pass context from prior steps to each agent (`task_next` provides this)
 

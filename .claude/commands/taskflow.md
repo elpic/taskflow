@@ -276,10 +276,10 @@ TaskUpdate(taskId=T3_new, addBlockedBy=[T2_new])
 
 Native tasks (Claude UI task list) are ephemeral — they are lost when Claude restarts. On every session start or when `/taskflow:tasks` is called:
 
-1. Call `task_current` to find the active task
-2. If there is an in-progress task → show the **parent's step list** (Level 1), recreate native tasks for those steps
-3. If nothing is in-progress → show **root-level pending tasks only** (Level 0), recreate native tasks for those
-4. Never show the full history — only the currently relevant level
+1. Call `task_current` to find the active task and its `parent_id`
+2. **If there is an in-progress task with a parent_id** → call `task_list(parent_id=<parent_id>)` to get all sibling steps of that ticket. Delete all native tasks, recreate one per step with correct status. Show ONLY steps — no sprint root, no other tickets.
+3. **If nothing is in-progress** → call `task_list()`, extract only root-level tasks (no parent). Delete all native tasks, recreate one per pending/active root task. Show ONLY the root level — do not expand children.
+4. Never show the full history dump — only the currently relevant level.
 
 ### Checklist (verify before EACH agent delegation)
 

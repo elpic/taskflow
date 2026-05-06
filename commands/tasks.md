@@ -3,44 +3,49 @@ name: tasks
 description: "Show the current taskflow task tree at the right focus level"
 ---
 
-Show the taskflow task tree focused at the right level. Follow this logic exactly:
+Show the taskflow task tree focused at the right level. Follow these steps exactly:
 
 ## Step 1: Get current task
 
-Call `task_current` to find the active task (if any).
+Call `task_current` to find the active task (if any). Note its `id` and `parent_id`.
 
-## Step 2: Determine focus level
+## Step 2: Determine what to show
 
-**If there is an in-progress task** (status: in_progress or verifying):
-- The in-progress task is a step inside a parent workflow (e.g. "Implement" inside "Build feature X")
-- Show the **parent's subtree**: call `task_list(parent_id=<parent_id_of_current_task>)`
-- This shows only the sibling steps of the active task — the current ticket's steps
-- Label the output: "**Working on: <parent name>**"
-- Highlight which step is currently active
+### Case A — There is an in-progress task (has a parent_id)
 
-**If there is no in-progress task** (nothing active):
-- Show only **root-level tasks** (top-level items, no parent) that are pending or in-progress
-- Call `task_list()` and filter to show only root tasks — omit their children
-- Omit tasks that are `done` unless they are part of an active sprint/product
-- Label the output: "**Sprint/backlog overview**"
+The user is mid-sprint, drilling into a ticket. Show ONLY the steps of the ticket currently being worked on:
 
-## Step 3: Restore native tasks (Claude UI)
+1. Call `task_list(parent_id=<parent_id of current task>)` to get all sibling steps
+2. Do NOT show the sprint root or other tickets — only the steps of this one ticket
+3. Label: "**Working on: <parent task name>**"
 
-After displaying the taskflow tree, also restore the native Claude UI task list to match:
+### Case B — No in-progress task (or current task has no parent — it IS a root)
 
-**If in-progress task exists** (showing step level):
-- Delete any existing native tasks
-- Create native tasks for each sibling step shown, with correct statuses:
-  - done → `completed`
-  - in_progress/verifying → `in_progress`
-  - pending → `pending`
-- Chain them with `addBlockedBy` in the same order
+Show ONLY the root-level pending/active tasks (the sprint backlog):
 
-**If no in-progress task** (showing root level):
-- Delete any existing native tasks
-- Create one native task per root-level pending/active task shown
-- Chain them with `addBlockedBy` in sprint order
+1. Call `task_list()` to get the full tree
+2. From the result, extract ONLY the root-level tasks (those with no parent)
+3. Show them as a flat list — do NOT expand their children
+4. Omit tasks that are fully `done` unless the entire sprint is done
+5. Label: "**Sprint overview**"
 
-## Step 4: Report
+## Step 3: Recreate native Claude UI tasks to match
 
-Print a clean summary of what's shown and why, so the user understands the current state at a glance.
+**Delete ALL existing native tasks first** (set each to `deleted`).
+
+Then recreate native tasks to mirror exactly what was shown in Step 2:
+
+- For Case A (steps): one native task per step shown, with statuses:
+  - `done` → `completed`
+  - `in_progress` or `verifying` → `in_progress` (mark activeForm with step name)
+  - `pending` → `pending`
+  - Chain with `addBlockedBy` in order
+- For Case B (root tickets): one native task per root ticket shown, with statuses mapped the same way
+
+**CRITICAL**: The native task list must show ONLY the same level as the taskflow tree above. Never mix levels.
+
+## Step 4: Print summary
+
+One short line: what is being shown and why. Example:
+- "Showing 6 steps for **History filtering** — step 2/6 in progress"
+- "Showing sprint backlog — 3 tickets pending, 2 completed"

@@ -203,11 +203,14 @@ TaskUpdate(taskId=T3, addBlockedBy=[T2])
 
 ### Phase 2: Drill Into a Ticket (REQUIRED for every ticket)
 
-When starting work on a ticket, DELETE the ticket-level tasks and CREATE step-level tasks:
+When starting work on a ticket, DELETE **all** ticket-level tasks and CREATE step-level tasks. The user must see ONLY the current level — mixing ticket tasks with step tasks causes confusion.
 
 ```
-# 1. Delete ONLY the current ticket's task (keep others for overview)
-TaskUpdate(taskId=T2, status="deleted")  # drilling into Ticket 2
+# 1. Delete ALL ticket tasks (completed, pending, and in-progress)
+#    so the list is empty before step tasks appear
+TaskUpdate(taskId=T1, status="deleted")  # already completed — still delete it
+TaskUpdate(taskId=T2, status="deleted")  # the ticket we're drilling into
+TaskUpdate(taskId=T3, status="deleted")  # pending — still delete it
 
 # 2. Create step-level tasks for the current ticket's workflow
 TaskCreate(subject="Create branch", ...)        → id=S1
@@ -225,6 +228,8 @@ TaskUpdate(taskId=S5, addBlockedBy=[S4])
 TaskUpdate(taskId=S6, addBlockedBy=[S5])
 ```
 
+**CRITICAL**: Never leave ticket tasks and step tasks visible at the same time. Delete ALL of one level before creating the next.
+
 ### Phase 3: Work Through Steps
 
 For EACH step, update its status before and after:
@@ -241,19 +246,31 @@ TaskUpdate(taskId=S3, status="completed")
 
 ### Phase 4: Drill Back Up to Ticket Level
 
-After the ticket is merged, DELETE step tasks and RECREATE ticket tasks with updated statuses:
+After the ticket is merged, DELETE all step tasks and RECREATE all ticket tasks with their current statuses. The user must see ONLY the ticket level again — no step tasks should remain.
 
 ```
-# 1. Delete step-level tasks
+# 1. Delete ALL step-level tasks
 TaskUpdate(taskId=S1, status="deleted")
 TaskUpdate(taskId=S2, status="deleted")
-# ... delete all step tasks ...
+TaskUpdate(taskId=S3, status="deleted")
+TaskUpdate(taskId=S4, status="deleted")
+TaskUpdate(taskId=S5, status="deleted")
+TaskUpdate(taskId=S6, status="deleted")
 
-# 2. Recreate the completed ticket's task as done
+# 2. Recreate ALL ticket tasks with correct statuses
+#    (they were all deleted in Phase 2 — restore the full picture)
+TaskCreate(subject="Ticket 1: <name>", ...)  → id=T1_new
+TaskUpdate(taskId=T1_new, status="completed")
+
 TaskCreate(subject="Ticket 2: <name>", ...)  → id=T2_new
-TaskUpdate(taskId=T2_new, status="completed")
-# T1 was already completed, T3 is still pending — both untouched
+TaskUpdate(taskId=T2_new, status="completed")  # just merged
+
+TaskCreate(subject="Ticket 3: <name>", ...)  → id=T3_new
+# T3 stays pending, re-add its blockedBy dependency
+TaskUpdate(taskId=T3_new, addBlockedBy=[T2_new])
 ```
+
+**CRITICAL**: Never leave step tasks and ticket tasks visible at the same time. Delete ALL of one level before creating the next.
 
 ### Checklist (verify before EACH agent delegation)
 

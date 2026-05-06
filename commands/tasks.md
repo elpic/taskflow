@@ -1,53 +1,42 @@
 ---
 name: tasks
-description: "Show the current taskflow task tree at the right focus level"
+description: "Sync and show the native Claude UI task list from taskflow state"
 ---
 
-Show the taskflow task tree focused at the right level. Follow these steps exactly:
+Sync the native Claude UI task list from taskflow. Execute ALL steps below without stopping.
 
-## Step 1: Find any in-progress task
+## Step 1: Get current UI state
 
-Call `task_list(status="in_progress")`. This is the authoritative signal for current level.
+Call the MCP tool `task_ui_state`. Parse the JSON response — it contains `level`, `label`, `tasks[]`, and `blocked_by[]`.
 
-- If one or more tasks are returned: pick the first one. Note its `id` and `parent_id`.
-- If nothing is returned: also try `task_list(status="verifying")` — a verifying task means work is active.
-- If still nothing: no active work → go to **Case B**.
+## Step 2: Delete all existing native tasks
 
-## Step 2: Determine what to show
+Call `TaskList` to get all current native tasks. For each task returned, call `TaskUpdate(taskId=<id>, status="deleted")`. Do this even if the list looks correct — always start fresh.
 
-### Case A — There is an in-progress or verifying task
+## Step 3: Create native tasks from the response
 
-The user is mid-sprint inside a ticket. Show ONLY the steps of that ticket:
+For each item in `tasks[]` from the `task_ui_state` response, call:
+```
+TaskCreate(subject=<task.name>, description=<label from response>)
+```
 
-1. Take the `parent_id` of the in-progress task
-2. Call `task_list(parent_id=<parent_id>)` to get all sibling steps of that ticket
-3. Do NOT show sprint root, other tickets, or any other level
-4. Label: "**Working on: <parent task name>**"
+Keep a mapping of `taskflow_id → native_task_id` for the next step.
 
-### Case B — Nothing is in-progress
+## Step 4: Apply blocked_by relationships
 
-Show ONLY root-level pending/active tasks:
+For each entry in `blocked_by[]`, call:
+```
+TaskUpdate(taskId=<native_id of task_id>, addBlockedBy=[<native_id of blocked_by_id>])
+```
 
-1. Call `task_list()` and extract only tasks with no parent (root level)
-2. Show them as a flat list — do NOT expand their children
-3. Omit tasks that are fully `done`
-4. Label: "**Sprint overview**"
+## Step 5: Set statuses
 
-## Step 3: Recreate native Claude UI tasks
+For each task in `tasks[]`:
+- `status = "done"` → `TaskUpdate(taskId=<native_id>, status="completed")`
+- `status = "in_progress"` or `status = "verifying"` → `TaskUpdate(taskId=<native_id>, status="in_progress", activeForm=<task.name>)`
+- `status = "pending"` → leave as-is (default)
 
-**Delete ALL existing native tasks first.**
+## Step 6: Report
 
-Then recreate native tasks mirroring exactly what was shown:
-
-- `done` → `completed`
-- `in_progress` or `verifying` → `in_progress` (with activeForm = step name)
-- `pending` → `pending`
-- Chain with `addBlockedBy` in the same order as the taskflow tree
-
-**Never mix levels in the native task list.**
-
-## Step 4: Print one summary line
-
-Example:
-- "Showing 6 steps for **History filtering** — step 2 in progress"
-- "Showing sprint backlog — 3 tickets pending"
+Print one line: the `label` from the response and how many tasks were synced.
+Example: "Working on: Add language standards — 10 steps synced"

@@ -15,7 +15,7 @@ Run `uname -s` and `uname -m` to get OS and architecture, then map:
 
 Run:
 ```bash
-curl -sI "https://github.com/elpic/taskflow/releases/latest/download/taskflow-mcp_latest_Darwin_arm64.tar.gz" 2>/dev/null | grep -i '^location:' | tr -d '\r' | awk '{print $2}'
+curl -sI "https://github.com/elpic/taskflow/releases/latest/download/taskflow-mcp_latest_<OS>_<ARCH>.tar.gz" 2>/dev/null | grep -i '^location:' | tr -d '\r' | awk '{print $2}'
 ```
 (substitute the actual OS/arch detected above)
 
@@ -23,26 +23,42 @@ Extract the version from the `Location` URL: the segment after `/download/v` and
 
 ## Step 3: Check current version
 
-Read the file `.taskflow/version` in the taskflow project directory (same directory as `mcp.sh`). If it exists and matches the remote version, report "Already up to date (v<version>)" and stop.
+Run `taskflow-mcp --version` if the binary exists. If the version matches the remote version, report "Already up to date (v<version>)" and stop.
 
 ## Step 4: Download and install
+
+Install directory: `~/.local/bin` (create it if it doesn't exist).
 
 Construct the download URL:
 ```
 https://github.com/elpic/taskflow/releases/download/v<VERSION>/taskflow-mcp_<VERSION>_<OS>_<ARCH>.tar.gz
 ```
 
-Download to a temp directory, extract `taskflow-mcp`, make it executable, move it to the taskflow project directory (replacing any existing binary).
+Download to a temp directory, extract `taskflow-mcp`, make it executable, move it to `~/.local/bin/taskflow-mcp`.
 
-Write the new version string to `.taskflow/version`.
+## Step 5: Check PATH
 
-## Step 5: Report
+Check whether `~/.local/bin` is on the user's `$PATH`:
+```bash
+echo "$PATH" | tr ':' '\n' | grep -q "$HOME/.local/bin"
+```
+
+If it is NOT on `$PATH`, print a warning:
+
+```
+⚠️  ~/.local/bin is not on your PATH.
+
+Add this to your shell profile (~/.zshrc or ~/.bashrc):
+
+    export PATH="$HOME/.local/bin:$PATH"
+
+Then reload: source ~/.zshrc
+```
+
+## Step 6: Report
 
 Print:
-- What version was installed
-- Where the binary lives
-- "Restart Claude Code (or reload the MCP server) to use the new version."
-
-## Project directory
-
-The taskflow project directory is: `/Users/elpic/development/workspace/personal/taskflow`
+- What version was installed (or "already up to date")
+- Where the binary is: `~/.local/bin/taskflow-mcp`
+- If this was a fresh install: "Restart Claude Code to activate the MCP server."
+- If this was an upgrade: "Restart Claude Code (or reload the MCP server) to use the new version."
